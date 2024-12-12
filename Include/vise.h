@@ -222,7 +222,7 @@ struct VIImageInfo
 	VIImageType type;
 	VIImageUsageFlags usage;
 	VIFormat format;
-	VkMemoryPropertyFlags properties; // TODO:
+	VkMemoryPropertyFlags properties;
 	uint32_t width;
 	uint32_t height;
 	uint32_t layers = 1;

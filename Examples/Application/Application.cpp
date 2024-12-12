@@ -32,7 +32,7 @@ Application::Application(const char* name, VIBackend backend, bool create_visibl
 	deviceI.desired_swapchain_framebuffer_count = APP_DESIRED_FRAMES_IN_FLIGHT;
 	deviceI.vulkan.configure_swapchain = nullptr;
 	deviceI.vulkan.select_physical_device = nullptr;
-	deviceI.vulkan.enable_validation_layers = true;
+	deviceI.vulkan.enable_validation_layers = true; // TODO: disable in release build
 
 	if (backend == VI_BACKEND_VULKAN)
 		mDevice = vi_create_device_vk(&deviceI, &mDeviceLimits);

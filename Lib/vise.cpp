@@ -99,7 +99,7 @@
 //   downwards instead of upwards. Vise uses OpenGL left-handed NDC:
 //   Positive Y pointing upwards, Positive Z pointing into the screen.
 // Normalize Depth (NDC Z-Axis)
-//   TODO:
+//   glClipControl
 // Normalize Screen Space Origin:
 //   Vise uses top-left as screen space origin, same as vulkan.
 //   In OpenGL, glViewport and glScissor parameters are processed.
@@ -550,7 +550,7 @@ static void vk_create_device(Vulkan* vk, const VIDeviceInfo* info);
 static void vk_destroy_device(Vulkan* vk);
 static void vk_create_swapchain(Vulkan* vk, const VISwapchainInfo* info, uint32_t min_image_count);
 static void vk_destroy_swapchain(Vulkan* vk);
-static void vk_create_image(Vulkan* vk, VIImage image, const VkImageCreateInfo* info);
+static void vk_create_image(Vulkan* vk, VIImage image, const VkImageCreateInfo* info, const VkMemoryPropertyFlags& properties);
 static void vk_destroy_image(Vulkan* vk, VIImage image);
 static void vk_create_image_view(Vulkan* vk, VIImage image, const VkImageViewCreateInfo* info);
 static void vk_destroy_image_view(Vulkan* vk, VIImage image);
@@ -1083,7 +1083,7 @@ static void vk_create_swapchain(Vulkan* vk, const VISwapchainInfo* info, uint32_
 			depthStencilImageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 			depthStencilImageCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 			depthStencilImageCI.samples = VK_SAMPLE_COUNT_1_BIT;
-			vk_create_image(vk, vk->swapchain.depth_stencils.data() + i, &depthStencilImageCI);
+			vk_create_image(vk, vk->swapchain.depth_stencils.data() + i, &depthStencilImageCI, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 			viewCI.image = vk->swapchain.depth_stencils[i].vk.handle;
 			viewCI.format = vk->swapchain.depth_stencil_format;
@@ -1114,7 +1114,7 @@ static void vk_destroy_swapchain(Vulkan* vk)
 	vk->swapchain.handle = VK_NULL_HANDLE;
 }
 
-static void vk_create_image(Vulkan* vk, VIImage image, const VkImageCreateInfo* info)
+static void vk_create_image(Vulkan* vk, VIImage image, const VkImageCreateInfo* info, const VkMemoryPropertyFlags& properties)
 {
 	image->flags |= VI_IMAGE_FLAG_CREATED_IMAGE_BIT;
 
@@ -1122,6 +1122,8 @@ static void vk_create_image(Vulkan* vk, VIImage image, const VkImageCreateInfo* 
 	allocCI.usage = VMA_MEMORY_USAGE_AUTO;
 	allocCI.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
 	allocCI.priority = 1.0f;
+	allocCI.requiredFlags = properties;
+	allocCI.preferredFlags = properties;
 	VK_CHECK(vmaCreateImage(vk->vma, info, &allocCI, &image->vk.handle, &image->vk.alloc, nullptr));
 }
 
@@ -3269,7 +3271,7 @@ VIImage vi_create_image(VIDevice device, const VIImageInfo* info)
 	imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
 	if (info->type == VI_IMAGE_TYPE_CUBE)
 		imageCI.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-	vk_create_image(vk, image, &imageCI);
+	vk_create_image(vk, image, &imageCI, info->properties);
 
 	VkImageViewCreateInfo viewCI{};
 	viewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
