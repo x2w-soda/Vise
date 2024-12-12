@@ -1,0 +1,11 @@
+add_executable(vise_tests
+	TestMain.cpp
+	TestApplication.h
+	TestApplication.cpp
+	TestBuiltins.h
+	TestBuiltins.cpp
+)
+
+target_include_directories(vise_tests PRIVATE ${VISE_INCLUDE_DIRS} ${glm_SOURCE_DIR})
+target_link_directories(vise_tests PRIVATE ${VISE_LINK_DIRS})
+target_link_libraries(vise_tests PRIVATE ${VISE_VULKAN_SDK_LIBS} vise vise_application glfw)
