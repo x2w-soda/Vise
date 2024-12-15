@@ -308,7 +308,7 @@ ExamplePostProcess::ExamplePostProcess(VIBackend backend)
 		bufferI.size = sizeof(FrameUBO);
 		bufferI.properties = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
 		mFrames[i].scene_ubo = vi_create_buffer(mDevice, &bufferI);
-		//mFrames[i].scene_ubo_map = vi_buffer_map(mFrames[i].scene_ubo);
+		vi_buffer_map(mFrames[i].scene_ubo);
 		
 		VIFramebufferInfo fbI;
 		fbI.color_attachment_count = 1;
@@ -338,7 +338,7 @@ ExamplePostProcess::~ExamplePostProcess()
 	for (size_t i = 0; i < mFrames.size(); i++)
 	{
 		vi_destroy_framebuffer(mDevice, mFrames[i].fbo);
-		//vi_buffer_unmap(mFrames[i].scene_ubo);
+		vi_buffer_unmap(mFrames[i].scene_ubo);
 		vi_destroy_buffer(mDevice, mFrames[i].scene_ubo);
 		vi_destroy_image(mDevice, mFrames[i].scene_image);
 		vi_destroy_image(mDevice, mFrames[i].scene_depth);
@@ -385,10 +385,7 @@ void ExamplePostProcess::Run()
 		FrameUBO ubo;
 		ubo.ViewMat = mCamera.GetViewMat();
 		ubo.ProjMat = mCamera.GetProjMat();
-		frame->scene_ubo_map = vi_buffer_map(frame->scene_ubo);
-		memcpy(frame->scene_ubo_map, &ubo, sizeof(ubo));
-		vi_buffer_unmap(frame->scene_ubo);
-		//vi_buffer_flush_map(frame->scene_ubo); // TODO: OpenGL / Vulkan memory model inconsistency
+		vi_buffer_map_write(frame->scene_ubo, 0, sizeof(ubo), &ubo);
 
 		vi_reset_command(frame->cmd);
 		vi_cmd_begin_record(frame->cmd, 0);

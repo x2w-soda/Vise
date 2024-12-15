@@ -35,7 +35,6 @@ private:
 		VISet set;
 		VIBuffer ubo;
 		VICommand cmd;
-		void* ubo_map;
 	};
 
 	static ExamplePyramid* sInstance;

@@ -223,7 +223,10 @@ struct VIBufferObj : VIObject
 {
 	VIBufferType type;
 	VIBufferUsageFlags usage;
+	VkMemoryPropertyFlags properties;
 	size_t size;
+	uint8_t* map;
+	bool is_mapped;
 
 	union
 	{
@@ -237,7 +240,6 @@ struct VIBufferObj : VIObject
 		{
 			GLuint handle;
 			GLenum target;
-			void* data;
 		} gl;
 	};
 };
@@ -1505,13 +1507,12 @@ static void gl_create_buffer(VIDevice device, VIBuffer buffer, const VIBufferInf
 {
 	if (info->type == VI_BUFFER_TYPE_NONE)
 	{
-		// staging buffer or temporary usage
-		buffer->gl.data = vi_malloc(buffer->size);
+		buffer->map = (uint8_t*)vi_malloc(buffer->size);
 		buffer->gl.target = GL_NONE;
 		return;
 	}
 	else
-		buffer->gl.data = nullptr;
+		buffer->map = nullptr;
 
 	GLenum gltype;
 	cast_buffer_type(info->type, &gltype);
@@ -1521,12 +1522,13 @@ static void gl_create_buffer(VIDevice device, VIBuffer buffer, const VIBufferInf
 	glCreateBuffers(1, &buffer->gl.handle);
 	glBindBuffer(buffer->gl.target, buffer->gl.handle);
 	glBufferData(buffer->gl.target, buffer->size, nullptr, GL_STATIC_DRAW);
+	GL_CHECK();
 }
 
 static void gl_destroy_buffer(VIDevice device, VIBuffer buffer)
 {
-	if (buffer->gl.data)
-		vi_free(buffer->gl.data);
+	if (buffer->map)
+		vi_free(buffer->map);
 
 	glDeleteBuffers(1, &buffer->gl.handle);
 }
@@ -1972,7 +1974,7 @@ static void gl_cmd_execute_begin_pass(VIDevice device, GLCommand* glcmd)
 
 	// flip OpenGL clip space Y axis when rendering to offscreen framebuffers
 	bool flip_gl_clip_origin = framebuffer != device->swapchain_framebuffers;
-	//flip_gl_clip_origin = false;
+	flip_gl_clip_origin = false;
 	GLenum clip_origin = flip_gl_clip_origin ? GL_UPPER_LEFT : GL_LOWER_LEFT;
 	glClipControl(clip_origin, GL_ZERO_TO_ONE);
 
@@ -2044,7 +2046,7 @@ static void gl_cmd_execute_copy_image_to_buffer(VIDevice device, GLCommand* glcm
 	VI_ASSERT(buffer->type == VI_BUFFER_TYPE_NONE && buffer->usage & VI_BUFFER_USAGE_TRANSFER_DST_BIT);
 
 	glBindTexture(image->gl.target, image->gl.handle);
-	glGetTexImage(image->gl.target, 0, data_format, data_type, buffer->gl.data);
+	glGetTexImage(image->gl.target, 0, data_format, data_type, buffer->map);
 }
 
 static void gl_cmd_execute_dispatch(VIDevice device, GLCommand* glcmd)
@@ -3181,6 +3183,8 @@ VIBuffer vi_create_buffer(VIDevice device, const VIBufferInfo* info)
 	buffer->type = info->type;
 	buffer->size = info->size;
 	buffer->usage = info->usage;
+	buffer->properties = info->properties;
+	buffer->is_mapped = false;
 
 	if (device->backend == VI_BACKEND_OPENGL)
 	{
@@ -3962,55 +3966,107 @@ void vi_device_present_frame(VIDevice device)
 	VK_CHECK(vkQueuePresentKHR(vk->queue_present, &presentI));
 }
 
-void* vi_buffer_map(VIBuffer buffer)
+void vi_buffer_map(VIBuffer buffer)
 {
+	VI_ASSERT(!buffer->is_mapped);
+
+	buffer->is_mapped = true;
 	VIDevice device = buffer->device;
-	void* map;
 
 	if (device->backend == VI_BACKEND_OPENGL)
 	{
-		if (buffer->type == VI_BUFFER_TYPE_NONE)
-			map = buffer->gl.data;
-		else
-		{
-			glBindBuffer(buffer->gl.target, buffer->gl.handle);
-			map = glMapBufferRange(buffer->gl.target, 0, buffer->size, GL_MAP_WRITE_BIT | GL_MAP_FLUSH_EXPLICIT_BIT);
-		}
-		return map;
+		// OpenGL persistent mapping is not currently supported as it requires additional
+		// memory barriers and fence syncs. We use glBufferSubData and glGetBufferSubData
+		// to emulate persistant mapping with memory coherency.
+		if (!buffer->map)
+			buffer->map = (uint8_t*)vi_malloc((size_t)buffer->size);
+		return;
 	}
 
-	VK_CHECK(vmaMapMemory(device->vk.vma, buffer->vk.alloc, &map));
-	return map;
+	VK_CHECK(vmaMapMemory(device->vk.vma, buffer->vk.alloc, (void**) &buffer->map));
+}
+
+void* vi_buffer_map_read(VIBuffer buffer, uint32_t offset, uint32_t size)
+{
+	VI_ASSERT(buffer->is_mapped);
+	VI_ASSERT(offset + size <= buffer->size);
+	
+	VIDevice device = buffer->device;
+
+	if (device->backend == VI_BACKEND_OPENGL)
+	{
+		if (buffer->type != VI_BUFFER_TYPE_NONE)
+		{
+			glBindBuffer(buffer->gl.target, buffer->gl.handle);
+			glGetBufferSubData(buffer->gl.target, offset, size, buffer->map + offset);
+			GL_CHECK();
+		}
+
+		return buffer->map + offset;
+	}
+
+	return buffer->map + offset;
+}
+
+void vi_buffer_map_write(VIBuffer buffer, uint32_t offset, uint32_t size, const void* write)
+{
+	VI_ASSERT(buffer->is_mapped);
+	VI_ASSERT(offset + size <= buffer->size);
+
+	VIDevice device = buffer->device;
+
+	if (device->backend == VI_BACKEND_OPENGL)
+	{
+		if (buffer->type != VI_BUFFER_TYPE_NONE)
+		{
+			glBindBuffer(buffer->gl.target, buffer->gl.handle);
+			glBufferSubData(buffer->gl.target, offset, size, write);
+			GL_CHECK();
+		}
+		else
+			memcpy(buffer->map + offset, write, size);
+
+		return;
+	}
+
+	memcpy(buffer->map + offset, write, size);
+}
+
+void vi_buffer_map_flush(VIBuffer buffer, uint32_t offset, uint32_t size)
+{
+	VI_ASSERT(buffer->is_mapped);
+
+	VIDevice device = buffer->device;
+
+	if (device->backend == VI_BACKEND_OPENGL || (buffer->properties & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
+		return;
+
+	VK_CHECK(vmaFlushAllocation(device->vk.vma, buffer->vk.alloc, offset, size));
+}
+
+void vi_buffer_map_invalidate(VIBuffer buffer, uint32_t offset, uint32_t size)
+{
+	VI_ASSERT(buffer->is_mapped);
+
+	VIDevice device = buffer->device;
+
+	if (device->backend == VI_BACKEND_OPENGL || (buffer->properties & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
+		return;
+
+	VK_CHECK(vmaInvalidateAllocation(device->vk.vma, buffer->vk.alloc, offset, size));
 }
 
 void vi_buffer_unmap(VIBuffer buffer)
 {
+	VI_ASSERT(buffer->is_mapped);
+
+	buffer->is_mapped = false;
 	VIDevice device = buffer->device;
 
 	if (device->backend == VI_BACKEND_OPENGL)
-	{
-		if (buffer->type == VI_BUFFER_TYPE_NONE)
-			return;
-
-		glBindBuffer(buffer->gl.target, buffer->gl.handle);
-		glUnmapBuffer(buffer->gl.target);
 		return;
-	}
 
 	vmaUnmapMemory(device->vk.vma, buffer->vk.alloc);
-}
-
-void vi_buffer_flush_map(VIBuffer buffer)
-{
-	if (buffer->device->backend == VI_BACKEND_OPENGL)
-	{
-		glBindBuffer(buffer->gl.target, buffer->gl.handle);
-		glFlushMappedBufferRange(buffer->gl.target, 0, buffer->size);
-		return;
-	}
-
-	// TODO: vulkan cache invalidation
-	//VI_UNREACHABLE;
 }
 
 void vi_reset_command(VICommand cmd)
@@ -4430,13 +4486,13 @@ VIBuffer vi_util_create_buffer_staged(VIDevice device, VIBufferInfo* info, void*
 	src_buffer_info.type = info->type;
 	src_buffer_info.size = info->size;
 	src_buffer_info.usage = VI_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	src_buffer_info.properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+	src_buffer_info.properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
 	VIBuffer src_buffer = vi_create_buffer(device, &src_buffer_info);
 	VIBuffer dst_buffer = vi_create_buffer(device, info);
 
-	void* map = vi_buffer_map(src_buffer);
-	memcpy(map, data, info->size);
+	vi_buffer_map(src_buffer);
+	vi_buffer_map_write(src_buffer, 0, info->size, data);
 	vi_buffer_unmap(src_buffer);
 
 	VICommand staging_cmd = vi_alloc_command(device, vk->cmd_pool_graphics, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
@@ -4504,13 +4560,13 @@ VIImage vi_util_create_image_staged(VIDevice device, VIImageInfo* info, void* da
 	src_buffer_info.type = VI_BUFFER_TYPE_NONE;
 	src_buffer_info.size = image_size;
 	src_buffer_info.usage = VI_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	src_buffer_info.properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+	src_buffer_info.properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
 	VIBuffer src_buffer = vi_create_buffer(device, &src_buffer_info);
 	VIImage dst_image = vi_create_image(device, info);
 
-	void* map = vi_buffer_map(src_buffer);
-	memcpy(map, data, image_size);
+	vi_buffer_map(src_buffer);
+	vi_buffer_map_write(src_buffer, 0, image_size, data);
 	vi_buffer_unmap(src_buffer);
 
 	VICommand staging_cmd = vi_alloc_command(device, vk->cmd_pool_graphics, VK_COMMAND_BUFFER_LEVEL_PRIMARY);

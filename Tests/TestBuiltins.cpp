@@ -207,7 +207,9 @@ void TestBuiltins::Run()
 
 	// save to disk
 	const char* name = mBackend == VI_BACKEND_VULKAN ? "gl_fragcoord_vk.png" : "gl_fragcoord_gl.png";
-	void* readback = vi_buffer_map(mScreenshotBuffer);
+	void* readback;
+	vi_buffer_map(mScreenshotBuffer);
+	readback = vi_buffer_map_read(mScreenshotBuffer, 0, TEST_WINDOW_WIDTH * TEST_WINDOW_HEIGHT * 4);
 	stbi_write_png(name, TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT, 4, readback, TEST_WINDOW_WIDTH * 4);
 	vi_buffer_unmap(mScreenshotBuffer);
 

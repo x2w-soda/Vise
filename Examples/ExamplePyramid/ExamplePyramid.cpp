@@ -145,10 +145,11 @@ ExamplePyramid::ExamplePyramid(VIBackend backend)
 		uboI.properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 		uboI.size = sizeof(FrameUBO);
 		uboI.type = VI_BUFFER_TYPE_UNIFORM;
+		uboI.usage = 0;
 		mFrames[i].ubo = vi_create_buffer(mDevice, &uboI);
-		//mFrames[i].ubo_map = vi_buffer_map(mFrames[i].ubo);
 		mFrames[i].set = vi_alloc_set(mDevice, mSetPool, mSetLayout);
 		mFrames[i].cmd = vi_alloc_command(mDevice, mCmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+		vi_buffer_map(mFrames[i].ubo);
 
 		VISetUpdateInfo updateI;
 		updateI.binding = 0;
@@ -169,7 +170,7 @@ ExamplePyramid::~ExamplePyramid()
 	{
 		vi_free_command(mDevice, mFrames[i].cmd);
 		vi_free_set(mDevice, mFrames[i].set);
-		//vi_buffer_unmap(mFrames[i].ubo);
+		vi_buffer_unmap(mFrames[i].ubo);
 		vi_destroy_buffer(mDevice, mFrames[i].ubo);
 	}
 
@@ -205,10 +206,7 @@ void ExamplePyramid::Run()
 		FrameUBO uboData;
 		uboData.view = mCamera.GetViewMat();
 		uboData.proj = mCamera.GetProjMat();
-		frame->ubo_map = vi_buffer_map(frame->ubo);
-		memcpy(frame->ubo_map, &uboData, sizeof(uboData));
-		vi_buffer_unmap(frame->ubo);
-		//vi_buffer_flush_map(frame->ubo);
+		vi_buffer_map_write(frame->ubo, 0, sizeof(uboData), &uboData);
 
 		vi_reset_command(frame->cmd);
 

@@ -439,9 +439,12 @@ VI_API void vi_queue_wait_idle(VIQueue queue);
 VI_API void vi_queue_submit(VIQueue queue, uint32_t submit_count, VISubmitInfo* submits, VIFence fence);
 VI_API void vi_set_update(VISet set, uint32_t update_count, const VISetUpdateInfo* updates);
 
-VI_API void* vi_buffer_map(VIBuffer buffer);
+VI_API void vi_buffer_map(VIBuffer buffer);
+VI_API void* vi_buffer_map_read(VIBuffer buffer, uint32_t offset, uint32_t size);
+VI_API void vi_buffer_map_write(VIBuffer buffer, uint32_t offset, uint32_t size, const void* write);
+VI_API void vi_buffer_map_flush(VIBuffer buffer, uint32_t offset, uint32_t size);
+VI_API void vi_buffer_map_invalidate(VIBuffer buffer, uint32_t offset, uint32_t size);
 VI_API void vi_buffer_unmap(VIBuffer buffer);
-VI_API void vi_buffer_flush_map(VIBuffer buffer);
 
 VI_API void vi_reset_command(VICommand cmd);
 VI_API void vi_cmd_begin_record(VICommand cmd, VkCommandBufferUsageFlags flags);

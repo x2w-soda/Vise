@@ -30,7 +30,6 @@ private:
 		VISet set;
 		VIFramebuffer fbo;
 		VIBuffer scene_ubo;
-		void* scene_ubo_map;
 		VIImage scene_image;
 		VIImage scene_depth;
 		VICommand cmd;

@@ -119,6 +119,7 @@ double TestDriver::TestMSE(const char* path1, const char* path2)
 	imageI.height = (uint32_t)height1;
 	imageI.sampler_filter = VI_FILTER_LINEAR;
 	imageI.sampler_address_mode = VI_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	imageI.properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 	VIImage image1 = vi_util_create_image_staged(mDevice, &imageI, data1, VK_IMAGE_LAYOUT_GENERAL);
 	VIImage image2 = vi_util_create_image_staged(mDevice, &imageI, data2, VK_IMAGE_LAYOUT_GENERAL);
 
@@ -136,11 +137,12 @@ double TestDriver::TestMSE(const char* path1, const char* path2)
 	bufferI.size = storage_size;
 	VIBuffer storage_buffer = vi_create_buffer(mDevice, &bufferI);
 
-	uint32_t* storage_data = (uint32_t*)vi_buffer_map(storage_buffer);
-
-	for (uint32_t i = 0; i < workgroup_x * workgroup_y; i++)
+	std::vector<uint32_t> storage_data(workgroup_x * workgroup_y);
+	for (size_t i = 0; i < storage_data.size(); i++)
 		storage_data[i] = 0;
 
+	vi_buffer_map(storage_buffer);
+	vi_buffer_map_write(storage_buffer, 0, storage_size, storage_data.data());
 	vi_buffer_unmap(storage_buffer);
 
 	VISet MSESet = AllocAndUpdateSet(mMSESetPool, mMSESetLayout, {
@@ -173,7 +175,9 @@ double TestDriver::TestMSE(const char* path1, const char* path2)
 	{
 		double squared_errors = 0.0;
 
-		storage_data = (uint32_t*)vi_buffer_map(storage_buffer);
+		vi_buffer_map(storage_buffer);
+		uint32_t* storage_data = (uint32_t*)vi_buffer_map_read(storage_buffer, 0, storage_size);
+
 		for (uint32_t i = 0; i < workgroup_x * workgroup_y; i++)
 		{
 			squared_errors += (storage_data[i] / 1e4);
