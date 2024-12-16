@@ -34,6 +34,10 @@ VI_DECLARE_HANDLE(VIPipeline);
 VI_DECLARE_HANDLE(VIComputePipeline);
 VI_DECLARE_HANDLE(VIFramebuffer);
 VI_DECLARE_HANDLE(VICommand);
+VI_DECLARE_HANDLE(VICommandPool);
+VI_DECLARE_HANDLE(VIFence);
+VI_DECLARE_HANDLE(VISemaphore);
+VI_DECLARE_HANDLE(VIQueue);
 
 struct VISwapchainInfo;
 struct VISubmitInfo;
@@ -51,12 +55,6 @@ struct VIBufferInfo;
 struct VIImageInfo;
 struct VIDrawInfo;
 struct VIPhysicalDevice;
-
-// TODO: wrap
-using VIQueue = VkQueue;
-using VIFence = VkFence;
-using VISemaphore = VkSemaphore;
-using VICommandPool = VkCommandPool;
 
 enum VIBackend
 {

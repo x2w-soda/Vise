@@ -119,43 +119,6 @@ enum VIImageFlagBits
 	VI_IMAGE_FLAG_CREATED_SAMPLER_BIT = 4,
 };
 
-struct Vulkan
-{
-	VIFrame* frames;
-	//VIVulkanInfo* info;
-	VmaAllocator vma;
-	uint32_t frame_idx;
-	uint32_t frames_in_flight;
-	uint32_t family_idx_graphics;
-	uint32_t family_idx_transfer;
-	uint32_t family_idx_present;
-	std::vector<VkLayerProperties> layer_props;
-	std::vector<VkExtensionProperties> ext_props;
-	std::vector<VIPhysicalDevice> pdevices;
-	VIPhysicalDevice* pdevice_chosen;
-	VkInstance instance;
-	VkSurfaceKHR surface;
-	VkPhysicalDevice pdevice;
-	VkDevice device;
-	VkQueue queue_graphics;
-	VkQueue queue_transfer;
-	VkQueue queue_present;
-	VkCommandPool cmd_pool_graphics;
-	bool pass_uses_swapchain_framebuffer;
-
-	struct
-	{
-		VkSwapchainKHR handle;
-		VkExtent2D image_extent;
-		uint32_t image_idx;
-		VkFormat image_format;
-		VkFormat depth_stencil_format;
-		std::vector<VkImage> image_handles;
-		std::vector<VIImageObj> images;
-		std::vector<VIImageObj> depth_stencils;
-	} swapchain;
-};
-
 struct VIObject
 {
 	VIObject() = default;
@@ -217,6 +180,28 @@ struct VICommandObj : VIObject
 			GLCommand* list;
 		} gl;
 	};
+};
+
+struct VICommandPoolObj : VIObject
+{
+	VkCommandPool vk_handle;
+};
+
+struct VIFenceObj : VIObject
+{
+	VkFence vk_handle;
+	bool gl_signal;
+};
+
+struct VISemaphoreObj : VIObject
+{
+	VkSemaphore vk_handle;
+	bool gl_signal;
+};
+
+struct VIQueueObj : VIObject
+{
+	VkQueue vk_handle;
 };
 
 struct VIBufferObj : VIObject
@@ -405,12 +390,71 @@ struct VIFramebufferObj : VIObject
 	};
 };
 
+struct VIFrame
+{
+	struct
+	{
+		VIFenceObj frame_complete;
+	} fence;
+
+	struct
+	{
+		VISemaphoreObj image_acquired; // swapchain framebuffer of the current frame is ready for rendering
+		VISemaphoreObj present_ready; // swapchain texture of the current frame is ready for presentation
+	} semaphore;
+};
+
+struct GLSubmitInfo
+{
+	GLSubmitInfo(uint32_t cmd_count, uint32_t wait_count, uint32_t signal_count)
+		: cmds(cmd_count), waits(wait_count), signals(signal_count) {}
+
+	std::vector<VICommand> cmds;
+	std::vector<VISemaphore> waits;
+	std::vector<VISemaphore> signals;
+};
+
 struct OpenGL
 {
 	VIDevice device;
 	GLenum index_type;
 	VIFramebuffer active_framebuffer;
 	GLuint active_program;
+	VIFrame frame;
+	std::vector<GLSubmitInfo> submits;
+};
+
+struct Vulkan
+{
+	VIFrame* frames;
+	VmaAllocator vma;
+	uint32_t frame_idx;
+	uint32_t frames_in_flight;
+	uint32_t family_idx_graphics;
+	uint32_t family_idx_transfer;
+	uint32_t family_idx_present;
+	std::vector<VkLayerProperties> layer_props;
+	std::vector<VkExtensionProperties> ext_props;
+	std::vector<VIPhysicalDevice> pdevices;
+	VIPhysicalDevice* pdevice_chosen;
+	VkInstance instance;
+	VkSurfaceKHR surface;
+	VkPhysicalDevice pdevice;
+	VkDevice device;
+	VICommandPoolObj cmd_pool_graphics;
+	bool pass_uses_swapchain_framebuffer;
+
+	struct
+	{
+		VkSwapchainKHR handle;
+		VkExtent2D image_extent;
+		uint32_t image_idx;
+		VkFormat image_format;
+		VkFormat depth_stencil_format;
+		std::vector<VkImage> image_handles;
+		std::vector<VIImageObj> images;
+		std::vector<VIImageObj> depth_stencils;
+	} swapchain;
 };
 
 enum GLCommandType
@@ -509,6 +553,9 @@ struct VIDeviceObj
 	VIDeviceObj& operator=(const VIDeviceObj&) = delete;
 
 	VIBackend backend;
+	VIQueueObj queue_graphics;
+	VIQueueObj queue_transfer;
+	VIQueueObj queue_present;
 	VIPass swapchain_pass;
 	VIFramebuffer swapchain_framebuffers;
 	VIPipeline active_pipeline;
@@ -520,20 +567,6 @@ struct VIDeviceObj
 		Vulkan vk;
 		OpenGL gl;
 	};
-};
-
-struct VIFrame
-{
-	struct
-	{
-		VkFence frame_complete;
-	} fence;
-
-	struct
-	{
-		VkSemaphore image_acquired; // swapchain framebuffer of the current frame is ready for rendering
-		VkSemaphore present_ready; // swapchain texture of the current frame is ready for presentation
-	} semaphore;
 };
 
 struct HostMalloc
@@ -548,7 +581,7 @@ static void vk_create_instance(Vulkan* vk, bool enable_validation);
 static void vk_destroy_instance(Vulkan* vk);
 static void vk_create_surface(Vulkan* vk);
 static void vk_destroy_surface(Vulkan* vk);
-static void vk_create_device(Vulkan* vk, const VIDeviceInfo* info);
+static void vk_create_device(Vulkan* vk, VIDevice device, const VIDeviceInfo* info);
 static void vk_destroy_device(Vulkan* vk);
 static void vk_create_swapchain(Vulkan* vk, const VISwapchainInfo* info, uint32_t min_image_count);
 static void vk_destroy_swapchain(Vulkan* vk);
@@ -558,8 +591,6 @@ static void vk_create_image_view(Vulkan* vk, VIImage image, const VkImageViewCre
 static void vk_destroy_image_view(Vulkan* vk, VIImage image);
 static void vk_create_sampler(Vulkan* vk, VIImage, const VkSamplerCreateInfo* info);
 static void vk_destroy_sampler(Vulkan* vk, VIImage);
-static void vk_create_cmd_pool(Vulkan* vk, VkCommandPool* handle, uint32_t family_idx, VkCommandPoolCreateFlags flags);
-static void vk_destroy_cmd_pool(Vulkan* vk, VkCommandPool handle);
 static void vk_create_framebuffer(Vulkan* vk, VIFramebuffer fb, VIPass pass, VkExtent2D extent, uint32_t atch_count, VIImage* atchs);
 static void vk_destroy_framebuffer(Vulkan* vk, VIFramebuffer fb);
 static void vk_alloc_cmd_buffer(Vulkan* vk, VICommand cmd, VkCommandPool pool, VkCommandBufferLevel level);
@@ -568,6 +599,8 @@ static bool vk_has_format_features(Vulkan* vk, VkFormat format, VkImageTiling ti
 static void vk_default_configure_swapchain(const VIPhysicalDevice* device, void* window, VISwapchainInfo* out_info);
 
 static void gl_device_present_frame(VIDevice device);
+static void gl_device_append_submission(VIDevice device, const VISubmitInfo* submit);
+static int gl_device_flush_submission(VIDevice device);
 static void gl_create_module(VIDevice device, VIModule module, const VIModuleInfo* info);
 static void gl_destroy_module(VIDevice device, VIModule module);
 static void gl_create_pipeline_layout(VIDevice device, VIPipelineLayout layout, const VIPipelineLayoutInfo* info);
@@ -589,7 +622,6 @@ static void gl_free_command(VIDevice device, VICommand cmd);
 static void gl_alloc_set(VIDevice device, VISet set);
 static void gl_free_set(VIDevice device, VISet set);
 static GLCommand* gl_cmd_append(VICommand cmd, GLCommandType type);
-static void gl_buffer_sub_data(VIBuffer buffer, uint32_t size, void* data);
 static void gl_set_update(VISet set, uint32_t update_count, const VISetUpdateInfo* updates);
 static void gl_pipeline_layout_get_remapped_binding(VIPipelineLayout layout, uint32_t set_idx, uint32_t binding_idx, uint32_t* remapped_binding);
 static void gl_reset_command(VIDevice device, VICommand cmd);
@@ -852,7 +884,7 @@ static void vk_destroy_surface(Vulkan* vk)
 	vk->surface = NULL;
 }
 
-static void vk_create_device(Vulkan* vk, const VIDeviceInfo* info)
+static void vk_create_device(Vulkan* vk, VIDevice device, const VIDeviceInfo* info)
 {
 	std::vector<VkPhysicalDevice> handles;
 	uint32_t pdevice_count;
@@ -1000,9 +1032,9 @@ static void vk_create_device(Vulkan* vk, const VIDeviceInfo* info)
 	vk->family_idx_transfer = family_idx_transfer;
 	vk->family_idx_present = family_idx_present;
 
-	vkGetDeviceQueue(vk->device, family_idx_graphics, 0, &vk->queue_graphics);
-	vkGetDeviceQueue(vk->device, family_idx_transfer, 0, &vk->queue_transfer);
-	vkGetDeviceQueue(vk->device, family_idx_present, 0, &vk->queue_present);
+	vkGetDeviceQueue(vk->device, family_idx_graphics, 0, &device->queue_graphics.vk_handle);
+	vkGetDeviceQueue(vk->device, family_idx_transfer, 0, &device->queue_transfer.vk_handle);
+	vkGetDeviceQueue(vk->device, family_idx_present, 0, &device->queue_present.vk_handle);
 }
 
 static void vk_destroy_device(Vulkan* vk)
@@ -1170,22 +1202,6 @@ static void vk_destroy_sampler(Vulkan* vk, VIImage image)
 	image->flags &= ~VI_IMAGE_FLAG_CREATED_SAMPLER_BIT;
 }
 
-static void vk_create_cmd_pool(Vulkan* vk, VkCommandPool* handle, uint32_t family_idx, VkCommandPoolCreateFlags flags)
-{
-	VkCommandPoolCreateInfo poolCI;
-	poolCI.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-	poolCI.pNext = nullptr;
-	poolCI.flags = flags;
-	poolCI.queueFamilyIndex = family_idx;
-
-	VK_CHECK(vkCreateCommandPool(vk->device, &poolCI, NULL, handle));
-}
-
-static void vk_destroy_cmd_pool(Vulkan* vk, VkCommandPool handle)
-{
-	vkDestroyCommandPool(vk->device, handle, NULL);
-}
-
 static void vk_create_framebuffer(Vulkan* vk, VIFramebuffer fb, VIPass pass, VkExtent2D extent, uint32_t atch_count, VIImage* atchs)
 {
 	VkImageView attachments[32];
@@ -1214,8 +1230,6 @@ static void vk_destroy_framebuffer(Vulkan* vk, VIFramebuffer fb)
 
 static void vk_alloc_cmd_buffer(Vulkan* vk, VICommand cmd, VkCommandPool pool, VkCommandBufferLevel level)
 {
-	cmd->pool = pool;
-
 	VkCommandBufferAllocateInfo bufferAI{};
 	bufferAI.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 	bufferAI.level = level;
@@ -1227,7 +1241,9 @@ static void vk_alloc_cmd_buffer(Vulkan* vk, VICommand cmd, VkCommandPool pool, V
 
 static void vk_free_cmd_buffer(Vulkan* vk, VICommand cmd)
 {
-	vkFreeCommandBuffers(vk->device, cmd->pool, 1, &cmd->vk.handle);
+	VICommandPool pool = cmd->pool;
+
+	vkFreeCommandBuffers(vk->device, pool->vk_handle, 1, &cmd->vk.handle);
 }
 
 bool vk_has_format_features(Vulkan* vk, VkFormat format, VkImageTiling tiling, VkFormatFeatureFlags features)
@@ -1319,6 +1335,77 @@ static void gl_device_present_frame(VIDevice device)
 	GLFWwindow* window = glfwGetCurrentContext();
 
 	glfwSwapBuffers(window);
+}
+
+// append a submission that will later be executed once all wait semaphores are signaled
+static void gl_device_append_submission(VIDevice device, const VISubmitInfo* submit)
+{
+	// can't cache pointer members in info struct, copy them over
+	device->gl.submits.push_back({ submit->cmd_count, submit->wait_count, submit->signal_count });
+	GLSubmitInfo& gl_submit = device->gl.submits.back();
+
+	for (uint32_t i = 0; i < submit->cmd_count; i++)
+		gl_submit.cmds[i] = submit->cmds[i];
+
+	for (uint32_t i = 0; i < submit->wait_count; i++)
+		gl_submit.waits[i] = submit->waits[i];
+
+	for (uint32_t i = 0; i < submit->signal_count; i++)
+		gl_submit.signals[i] = submit->signals[i];
+}
+
+// returns the number of submissions flushed in queue
+static int gl_device_flush_submission(VIDevice device)
+{
+	int total_flush_count = 0;
+	int flush_count;
+
+	// modify semaphore signal state and perform cascading submission
+	do {
+		flush_count = 0;
+
+		for (GLSubmitInfo& submit : device->gl.submits)
+		{
+			size_t cmd_count = submit.cmds.size();
+			size_t wait_count = submit.waits.size();
+			size_t signal_count = submit.signals.size();
+
+			bool is_submit_ready = true;
+
+			for (size_t j = 0; j < wait_count; j++)
+			{
+				if (!submit.waits[j]->gl_signal)
+				{
+					is_submit_ready = false;
+					break;
+				}
+			}
+
+			if (!is_submit_ready || submit.cmds.empty())
+				continue;
+
+			// execute all command buffers in submission and signal semaphores
+			for (size_t j = 0; j < cmd_count; j++)
+				gl_cmd_execute(device, submit.cmds[j]);
+
+			submit.cmds.clear();
+
+			for (size_t j = 0; j < signal_count; j++)
+				submit.signals[j]->gl_signal = true;
+
+			flush_count++;
+		}
+
+		total_flush_count += flush_count;
+	} while (flush_count > 0);
+
+	device->gl.submits.erase(std::remove_if(
+		device->gl.submits.begin(),
+		device->gl.submits.end(),
+		[](const GLSubmitInfo& submit) { return submit.cmds.empty(); }
+	));
+
+	return total_flush_count;
 }
 
 static void gl_create_module(VIDevice device, VIModule module, const VIModuleInfo* info)
@@ -1698,14 +1785,6 @@ static GLCommand* gl_cmd_append(VICommand cmd, GLCommandType type)
 	return glcmd;
 }
 
-static void gl_buffer_sub_data(VIBuffer buffer, uint32_t size, void* data)
-{
-	VI_ASSERT(size <= buffer->size && data != nullptr);
-
-	glBindBuffer(buffer->gl.target, buffer->gl.handle);
-	glBufferSubData(buffer->gl.target, 0, size, data);
-}
-
 static void gl_set_update(VISet set, uint32_t update_count, const VISetUpdateInfo* updates)
 {
 	for (uint32_t i = 0; i < update_count; i++)
@@ -1974,7 +2053,7 @@ static void gl_cmd_execute_begin_pass(VIDevice device, GLCommand* glcmd)
 
 	// flip OpenGL clip space Y axis when rendering to offscreen framebuffers
 	bool flip_gl_clip_origin = framebuffer != device->swapchain_framebuffers;
-	flip_gl_clip_origin = false;
+	//flip_gl_clip_origin = false;
 	GLenum clip_origin = flip_gl_clip_origin ? GL_UPPER_LEFT : GL_LOWER_LEFT;
 	glClipControl(clip_origin, GL_ZERO_TO_ONE);
 
@@ -2644,8 +2723,11 @@ VIDevice vi_create_device_vk(const VIDeviceInfo* info, VIDeviceLimits* limits)
 	}
 
 	VIDevice device = (VIDevice)vi_malloc(sizeof(VIDeviceObj));
-	device->backend = VI_BACKEND_VULKAN;
 	new (device)VIDeviceObj();
+	device->backend = VI_BACKEND_VULKAN;
+	device->queue_graphics.device = device;
+	device->queue_transfer.device = device;
+	device->queue_present.device = device;
 
 	Vulkan* vk = &device->vk;
 	new (vk)Vulkan();
@@ -2656,7 +2738,7 @@ VIDevice vi_create_device_vk(const VIDeviceInfo* info, VIDeviceLimits* limits)
 		volkLoadInstance(vk->instance);
 
 		vk_create_surface(vk);
-		vk_create_device(vk, info);
+		vk_create_device(vk, device, info);
 		volkLoadDevice(vk->device);
 	}
 
@@ -2787,7 +2869,11 @@ VIDevice vi_create_device_vk(const VIDeviceInfo* info, VIDeviceLimits* limits)
 
 	// per-frame resources
 	{
-		vk_create_cmd_pool(&device->vk, &vk->cmd_pool_graphics, vk->family_idx_graphics, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+		VkCommandPoolCreateInfo cmdPoolCI{};
+		cmdPoolCI.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+		cmdPoolCI.queueFamilyIndex = vk->family_idx_graphics;
+		cmdPoolCI.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+		VK_CHECK(vkCreateCommandPool(device->vk.device, &cmdPoolCI, nullptr, &vk->cmd_pool_graphics.vk_handle));
 
 		for (uint32_t i = 0; i < vk->frames_in_flight; i++)
 		{
@@ -2797,14 +2883,14 @@ VIDevice vi_create_device_vk(const VIDeviceInfo* info, VIDeviceLimits* limits)
 			fenceCI.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 			fenceCI.pNext = NULL;
 			fenceCI.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-			VK_CHECK(vkCreateFence(vk->device, &fenceCI, NULL, &frame->fence.frame_complete));
+			VK_CHECK(vkCreateFence(vk->device, &fenceCI, NULL, &frame->fence.frame_complete.vk_handle));
 
 			VkSemaphoreCreateInfo semCI;
 			semCI.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 			semCI.pNext = NULL;
 			semCI.flags = 0;
-			VK_CHECK(vkCreateSemaphore(vk->device, &semCI, NULL, &frame->semaphore.image_acquired));
-			VK_CHECK(vkCreateSemaphore(vk->device, &semCI, NULL, &frame->semaphore.present_ready));
+			VK_CHECK(vkCreateSemaphore(vk->device, &semCI, NULL, &frame->semaphore.image_acquired.vk_handle));
+			VK_CHECK(vkCreateSemaphore(vk->device, &semCI, NULL, &frame->semaphore.present_ready.vk_handle));
 		}
 	}
 
@@ -2827,11 +2913,16 @@ VIDevice vi_create_device_gl(const VIDeviceInfo* info, VIDeviceLimits* limits)
 	VIDevice device = (VIDevice)vi_malloc(sizeof(VIDeviceObj));
 	device->backend = VI_BACKEND_OPENGL;
 	new (device)VIDeviceObj();
+	device->queue_graphics.device = device;
+	device->queue_transfer.device = device;
+	device->queue_present.device = device;
 
 	OpenGL* gl = &device->gl;
 	new (gl)OpenGL();
-
 	gl->device = device;
+	gl->frame.fence.frame_complete.device = device;
+	gl->frame.semaphore.image_acquired.device = device;
+	gl->frame.semaphore.present_ready.device = device;
 
 	int success = gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
 	VI_ASSERT(success);
@@ -2877,11 +2968,11 @@ void vi_destroy_device(VIDevice device)
 		for (uint32_t i = 0; i < vk->frames_in_flight; i++)
 		{
 			VIFrame* frame = vk->frames + i;
-			vkDestroySemaphore(vk->device, frame->semaphore.present_ready, NULL);
-			vkDestroySemaphore(vk->device, frame->semaphore.image_acquired, NULL);
-			vkDestroyFence(vk->device, frame->fence.frame_complete, NULL);
+			vkDestroySemaphore(vk->device, frame->semaphore.present_ready.vk_handle, nullptr);
+			vkDestroySemaphore(vk->device, frame->semaphore.image_acquired.vk_handle, nullptr);
+			vkDestroyFence(vk->device, frame->fence.frame_complete.vk_handle, nullptr);
 		}
-		vk_destroy_cmd_pool(vk, vk->cmd_pool_graphics);
+		vkDestroyCommandPool(vk->device, vk->cmd_pool_graphics.vk_handle, nullptr);
 
 		for (uint32_t i = 0; i < vk->swapchain.images.size(); i++)
 			vk_destroy_framebuffer(vk, device->swapchain_framebuffers + i);
@@ -2917,50 +3008,69 @@ void vi_destroy_device(VIDevice device)
 
 void vi_queue_wait_idle(VIQueue queue)
 {
-	if (queue == VK_NULL_HANDLE) // OPENGL
+	if (queue->device->backend == VI_BACKEND_OPENGL)
 		return;
 
-	VK_CHECK(vkQueueWaitIdle(queue));
+	VK_CHECK(vkQueueWaitIdle(queue->vk_handle));
 }
 
 void vi_queue_submit(VIQueue queue, uint32_t submit_count, VISubmitInfo* submits, VIFence fence)
 {
-	if (queue == VK_NULL_HANDLE) // OPENGL
-	{
-		// TODO: semaphore dependencies
+	VIDevice device = queue->device;
 
+	if (device->backend == VI_BACKEND_OPENGL)
+	{
 		for (uint32_t i = 0; i < submit_count; i++)
-		{
-			for (uint32_t j = 0; j < submits[i].cmd_count; j++)
-			{
-				VICommand cmd = submits[i].cmds[j];
-				gl_cmd_execute(cmd->device, cmd);
-			}
-		}
+			gl_device_append_submission(device, submits + i);
+
+		gl_device_flush_submission(device);
 		return;
 	}
 
 	std::vector<VkSubmitInfo> infos(submit_count);
-	std::vector<std::vector<VkCommandBuffer>> cmds(submit_count);
+	std::vector<VkCommandBuffer> vk_cmds;
+	std::vector<VkSemaphore> vk_waits;
+	std::vector<VkSemaphore> vk_signals;
+
+	size_t reserve_guess = 4;
+	vk_cmds.reserve(reserve_guess);
+	vk_waits.reserve(reserve_guess);
+	vk_signals.reserve(reserve_guess);
+
+	uint32_t vk_cmds_base = 0;
+	uint32_t vk_waits_base = 0;
+	uint32_t vk_signals_base = 0;
 
 	for (uint32_t i = 0; i < submit_count; i++)
 	{
-		cmds[i].resize(submits[i].cmd_count);
-		for (uint32_t j = 0; j < submits[i].cmd_count; j++)
-			cmds[i][j] = submits[i].cmds[j]->vk.handle;
+		const VISubmitInfo& submit = submits[i];
+
+		for (uint32_t j = 0; j < submit.cmd_count; j++)
+			vk_cmds.push_back(submit.cmds[j]->vk.handle);
+
+		for (uint32_t j = 0; j < submit.wait_count; j++)
+			vk_waits.push_back(submit.waits[j]->vk_handle);
+
+		for (uint32_t j = 0; j < submit.signal_count; j++)
+			vk_signals.push_back(submit.signals[j]->vk_handle);
 
 		infos[i].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 		infos[i].pNext = nullptr;
-		infos[i].pWaitDstStageMask = submits[i].wait_stages;
-		infos[i].commandBufferCount = cmds[i].size();
-		infos[i].pCommandBuffers = cmds[i].data();
-		infos[i].waitSemaphoreCount = submits[i].wait_count;
-		infos[i].pWaitSemaphores = submits[i].waits;
-		infos[i].signalSemaphoreCount = submits[i].signal_count;
-		infos[i].pSignalSemaphores = submits[i].signals;
+		infos[i].pWaitDstStageMask = submit.wait_stages;
+		infos[i].commandBufferCount = submit.cmd_count;
+		infos[i].pCommandBuffers = vk_cmds.data() + vk_cmds_base;
+		infos[i].waitSemaphoreCount = submit.wait_count;
+		infos[i].pWaitSemaphores = vk_waits.data() + vk_waits_base;
+		infos[i].signalSemaphoreCount = submit.signal_count;
+		infos[i].pSignalSemaphores = vk_signals.data() + vk_signals_base;
+
+		vk_cmds_base += submit.cmd_count;
+		vk_waits_base += submit.wait_count;
+		vk_signals_base += submit.signal_count;
 	}
 
-	VK_CHECK(vkQueueSubmit(queue, submit_count, infos.data(), fence));
+	VkFence vk_fence = (fence == VI_NULL_HANDLE) ? VK_NULL_HANDLE : fence->vk_handle;
+	VK_CHECK(vkQueueSubmit(queue->vk_handle, submit_count, infos.data(), vk_fence));
 }
 
 void vi_set_update(VISet set, uint32_t update_count, const VISetUpdateInfo* updates)
@@ -3802,22 +3912,30 @@ void vi_destroy_framebuffer(VIDevice device, VIFramebuffer framebuffer)
 
 VICommandPool vi_create_command_pool(VIDevice device, uint32_t family_idx, VkCommandPoolCreateFlags flags)
 {
+	VICommandPool pool = (VICommandPool)vi_malloc(sizeof(VICommandPoolObj));
+	new (pool)VICommandPoolObj();
+	pool->device = device;
+
 	if (device->backend == VI_BACKEND_OPENGL)
-		return VK_NULL_HANDLE;
+		return pool;
 
-	VICommandPool pool;
-	vk_create_cmd_pool(&device->vk, &pool, family_idx, flags);
+	VkCommandPoolCreateInfo poolCI;
+	poolCI.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	poolCI.pNext = nullptr;
+	poolCI.flags = flags;
+	poolCI.queueFamilyIndex = family_idx;
+	VK_CHECK(vkCreateCommandPool(device->vk.device, &poolCI, nullptr, &pool->vk_handle));
 
-	VI_ASSERT(pool != VK_NULL_HANDLE);
 	return pool;
 }
 
 void vi_destroy_command_pool(VIDevice device, VICommandPool pool)
 {
-	if (device->backend == VI_BACKEND_OPENGL)
-		return;
+	if (device->backend == VI_BACKEND_VULKAN)
+		vkDestroyCommandPool(device->vk.device, pool->vk_handle, nullptr);
 
-	vk_destroy_cmd_pool(&device->vk, pool);
+	pool->~VICommandPoolObj();
+	vi_free(pool);
 }
 
 VICommand vi_alloc_command(VIDevice device, VICommandPool pool, VkCommandBufferLevel level)
@@ -3833,7 +3951,8 @@ VICommand vi_alloc_command(VIDevice device, VICommandPool pool, VkCommandBufferL
 		return cmd;
 	}
 
-	vk_alloc_cmd_buffer(vk, cmd, pool, level);
+	cmd->pool = pool;
+	vk_alloc_cmd_buffer(vk, cmd, pool->vk_handle, level);
 	return cmd;
 }
 
@@ -3844,7 +3963,7 @@ void vi_free_command(VIDevice device, VICommand cmd)
 	else
 	{
 		Vulkan* vk = &device->vk;
-		vkFreeCommandBuffers(vk->device, cmd->pool, 1, &cmd->vk.handle);
+		vkFreeCommandBuffers(vk->device, cmd->pool->vk_handle, 1, &cmd->vk.handle);
 	}
 
 	cmd->~VICommandObj();
@@ -3873,7 +3992,7 @@ uint32_t vi_device_get_graphics_family_index(VIDevice device)
 
 VIQueue vi_device_get_graphics_queue(VIDevice device)
 {
-	return device->backend == VI_BACKEND_OPENGL ? VK_NULL_HANDLE : device->vk.queue_graphics;
+	return &device->queue_graphics;
 }
 
 bool vi_device_has_depth_stencil_format(VIDevice device, VIFormat format, VkImageTiling tiling)
@@ -3911,7 +4030,14 @@ uint32_t vi_device_next_frame(VIDevice device, VISemaphore* image_acquired, VISe
 
 	if (device->backend == VI_BACKEND_OPENGL)
 	{
-		// TODO: semaphores and fences
+		OpenGL* gl = &device->gl;
+		gl->frame.semaphore.image_acquired.gl_signal = true;
+		gl->frame.semaphore.present_ready.gl_signal = false;
+		gl->frame.fence.frame_complete.gl_signal = false;
+
+		*image_acquired = &gl->frame.semaphore.image_acquired;
+		*present_ready = &gl->frame.semaphore.present_ready;
+		*frame_complete = &gl->frame.fence.frame_complete;
 		return 0;
 	}
 
@@ -3920,24 +4046,24 @@ uint32_t vi_device_next_frame(VIDevice device, VISemaphore* image_acquired, VISe
 	vk->frame_idx = (vk->frame_idx + 1) % vk->frames_in_flight;
 
 	VIFrame* frame = vk->frames + vk->frame_idx;
-	VK_CHECK(vkWaitForFences(vk->device, 1, &frame->fence.frame_complete, VK_TRUE, UINT64_MAX));
+	VK_CHECK(vkWaitForFences(vk->device, 1, &frame->fence.frame_complete.vk_handle, VK_TRUE, UINT64_MAX));
 
 	VkResult result = vkAcquireNextImageKHR(
 		vk->device,
 		vk->swapchain.handle,
 		UINT64_MAX,
-		frame->semaphore.image_acquired,
+		frame->semaphore.image_acquired.vk_handle,
 		VK_NULL_HANDLE,
 		&vk->swapchain.image_idx
 	);
 	VK_CHECK(result);
 
 	// assumes successful acquiring
-	VK_CHECK(vkResetFences(vk->device, 1, &frame->fence.frame_complete));
+	VK_CHECK(vkResetFences(vk->device, 1, &frame->fence.frame_complete.vk_handle));
 
-	*image_acquired = frame->semaphore.image_acquired;
-	*present_ready = frame->semaphore.present_ready;
-	*frame_complete = frame->fence.frame_complete;
+	*image_acquired = &frame->semaphore.image_acquired;
+	*present_ready = &frame->semaphore.present_ready;
+	*frame_complete = &frame->fence.frame_complete;
 
 	return device->vk.swapchain.image_idx;
 }
@@ -3946,6 +4072,7 @@ void vi_device_present_frame(VIDevice device)
 {
 	if (device->backend == VI_BACKEND_OPENGL)
 	{
+		VI_ASSERT(device->gl.frame.semaphore.present_ready.gl_signal);
 		gl_device_present_frame(device);
 		return;
 	}
@@ -3958,12 +4085,12 @@ void vi_device_present_frame(VIDevice device)
 	presentI.pNext = NULL;
 	presentI.pResults = NULL;
 	presentI.waitSemaphoreCount = 1;
-	presentI.pWaitSemaphores = &frame->semaphore.present_ready;
+	presentI.pWaitSemaphores = &frame->semaphore.present_ready.vk_handle;
 	presentI.swapchainCount = 1;
 	presentI.pSwapchains = &vk->swapchain.handle;
 	presentI.pImageIndices = &vk->swapchain.image_idx;
 
-	VK_CHECK(vkQueuePresentKHR(vk->queue_present, &presentI));
+	VK_CHECK(vkQueuePresentKHR(device->queue_present.vk_handle, &presentI));
 }
 
 void vi_buffer_map(VIBuffer buffer)
@@ -4476,7 +4603,8 @@ VIBuffer vi_util_create_buffer_staged(VIDevice device, VIBufferInfo* info, void*
 	if (device->backend == VI_BACKEND_OPENGL)
 	{
 		VIBuffer buffer = vi_create_buffer(device, info);
-		gl_buffer_sub_data(buffer, info->size, data);
+		glBindBuffer(buffer->gl.target, buffer->gl.handle);
+		glBufferSubData(buffer->gl.target, 0, info->size, data);
 		return buffer;
 	}
 
@@ -4495,7 +4623,7 @@ VIBuffer vi_util_create_buffer_staged(VIDevice device, VIBufferInfo* info, void*
 	vi_buffer_map_write(src_buffer, 0, info->size, data);
 	vi_buffer_unmap(src_buffer);
 
-	VICommand staging_cmd = vi_alloc_command(device, vk->cmd_pool_graphics, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+	VICommand staging_cmd = vi_alloc_command(device, &vk->cmd_pool_graphics, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 	vi_cmd_begin_record(staging_cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	{
 		VkBufferCopy region;
@@ -4509,8 +4637,8 @@ VIBuffer vi_util_create_buffer_staged(VIDevice device, VIBufferInfo* info, void*
 	VISubmitInfo submitI{};
 	submitI.cmd_count = 1;
 	submitI.cmds = &staging_cmd;
-	vi_queue_submit(vk->queue_graphics, 1, &submitI, VK_NULL_HANDLE);
-	vi_queue_wait_idle(vk->queue_graphics);
+	vi_queue_submit(&device->queue_graphics, 1, &submitI, VI_NULL_HANDLE);
+	vi_queue_wait_idle(&device->queue_graphics);
 	vi_free_command(device, staging_cmd);
 
 	vi_destroy_buffer(device, src_buffer);
@@ -4569,7 +4697,7 @@ VIImage vi_util_create_image_staged(VIDevice device, VIImageInfo* info, void* da
 	vi_buffer_map_write(src_buffer, 0, image_size, data);
 	vi_buffer_unmap(src_buffer);
 
-	VICommand staging_cmd = vi_alloc_command(device, vk->cmd_pool_graphics, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+	VICommand staging_cmd = vi_alloc_command(device, &vk->cmd_pool_graphics, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 	vi_cmd_begin_record(staging_cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	{
 		vi_util_cmd_image_layout_transition(staging_cmd, dst_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
@@ -4593,8 +4721,8 @@ VIImage vi_util_create_image_staged(VIDevice device, VIImageInfo* info, void* da
 	VISubmitInfo submitI{};
 	submitI.cmds = &staging_cmd;
 	submitI.cmd_count = 1;
-	vi_queue_submit(vk->queue_graphics, 1, &submitI, VK_NULL_HANDLE);
-	vi_queue_wait_idle(vk->queue_graphics);
+	vi_queue_submit(&device->queue_graphics, 1, &submitI, VI_NULL_HANDLE);
+	vi_queue_wait_idle(&device->queue_graphics);
 	vi_free_command(device, staging_cmd);
 
 	vi_destroy_buffer(device, src_buffer);
