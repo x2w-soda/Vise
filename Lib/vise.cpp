@@ -107,9 +107,9 @@
 //   Vise uses top-left as texture uv origin, same as vulkan.
 //   In OpneGL, uv origin is bottom left and textures appear flipped
 
-struct Vulkan;
+struct VIVulkan;
 struct VIFrame;
-struct OpenGL;
+struct VIOpenGL;
 struct HostMalloc;
 
 enum VIImageFlagBits
@@ -414,9 +414,10 @@ struct GLSubmitInfo
 	std::vector<VISemaphore> signals;
 };
 
-struct OpenGL
+// Vise OpenGL Context
+struct VIOpenGL
 {
-	VIDevice device;
+	VIDevice vi_device;
 	GLenum index_type;
 	VIFramebuffer active_framebuffer;
 	GLuint active_program;
@@ -424,10 +425,13 @@ struct OpenGL
 	std::vector<GLSubmitInfo> submits;
 };
 
-struct Vulkan
+// Vise Vulkan Context
+struct VIVulkan
 {
-	VIFrame* frames;
+	VIDevice vi_device;
+	VkDevice device;
 	VmaAllocator vma;
+	VIFrame* frames;
 	uint32_t frame_idx;
 	uint32_t frames_in_flight;
 	uint32_t family_idx_graphics;
@@ -440,7 +444,6 @@ struct Vulkan
 	VkInstance instance;
 	VkSurfaceKHR surface;
 	VkPhysicalDevice pdevice;
-	VkDevice device;
 	VICommandPoolObj cmd_pool_graphics;
 	bool pass_uses_swapchain_framebuffer;
 
@@ -562,10 +565,12 @@ struct VIDeviceObj
 	VIComputePipeline active_compute_pipeline;
 	VIDeviceLimits limits;
 
+	// NOTE: currently the vise device encapsulates the whole backend context,
+	//       and only one device may be created.
 	union
 	{
-		Vulkan vk;
-		OpenGL gl;
+		VIVulkan vk;
+		VIOpenGL gl;
 	};
 };
 
@@ -577,25 +582,25 @@ struct HostMalloc
 static void* vi_malloc(size_t size);
 static void vi_free(void* ptr);
 
-static void vk_create_instance(Vulkan* vk, bool enable_validation);
-static void vk_destroy_instance(Vulkan* vk);
-static void vk_create_surface(Vulkan* vk);
-static void vk_destroy_surface(Vulkan* vk);
-static void vk_create_device(Vulkan* vk, VIDevice device, const VIDeviceInfo* info);
-static void vk_destroy_device(Vulkan* vk);
-static void vk_create_swapchain(Vulkan* vk, const VISwapchainInfo* info, uint32_t min_image_count);
-static void vk_destroy_swapchain(Vulkan* vk);
-static void vk_create_image(Vulkan* vk, VIImage image, const VkImageCreateInfo* info, const VkMemoryPropertyFlags& properties);
-static void vk_destroy_image(Vulkan* vk, VIImage image);
-static void vk_create_image_view(Vulkan* vk, VIImage image, const VkImageViewCreateInfo* info);
-static void vk_destroy_image_view(Vulkan* vk, VIImage image);
-static void vk_create_sampler(Vulkan* vk, VIImage, const VkSamplerCreateInfo* info);
-static void vk_destroy_sampler(Vulkan* vk, VIImage);
-static void vk_create_framebuffer(Vulkan* vk, VIFramebuffer fb, VIPass pass, VkExtent2D extent, uint32_t atch_count, VIImage* atchs);
-static void vk_destroy_framebuffer(Vulkan* vk, VIFramebuffer fb);
-static void vk_alloc_cmd_buffer(Vulkan* vk, VICommand cmd, VkCommandPool pool, VkCommandBufferLevel level);
-static void vk_free_cmd_buffer(Vulkan* vk, VICommand cmd);
-static bool vk_has_format_features(Vulkan* vk, VkFormat format, VkImageTiling tiling, VkFormatFeatureFlags features);
+static void vk_create_instance(VIVulkan* vk, bool enable_validation);
+static void vk_destroy_instance(VIVulkan* vk);
+static void vk_create_surface(VIVulkan* vk);
+static void vk_destroy_surface(VIVulkan* vk);
+static void vk_create_device(VIVulkan* vk, VIDevice device, const VIDeviceInfo* info);
+static void vk_destroy_device(VIVulkan* vk);
+static void vk_create_swapchain(VIVulkan* vk, const VISwapchainInfo* info, uint32_t min_image_count);
+static void vk_destroy_swapchain(VIVulkan* vk);
+static void vk_create_image(VIVulkan* vk, VIImage image, const VkImageCreateInfo* info, const VkMemoryPropertyFlags& properties);
+static void vk_destroy_image(VIVulkan* vk, VIImage image);
+static void vk_create_image_view(VIVulkan* vk, VIImage image, const VkImageViewCreateInfo* info);
+static void vk_destroy_image_view(VIVulkan* vk, VIImage image);
+static void vk_create_sampler(VIVulkan* vk, VIImage, const VkSamplerCreateInfo* info);
+static void vk_destroy_sampler(VIVulkan* vk, VIImage);
+static void vk_create_framebuffer(VIVulkan* vk, VIFramebuffer fb, VIPass pass, VkExtent2D extent, uint32_t atch_count, VIImage* atchs);
+static void vk_destroy_framebuffer(VIVulkan* vk, VIFramebuffer fb);
+static void vk_alloc_cmd_buffer(VIVulkan* vk, VICommand cmd, VkCommandPool pool, VkCommandBufferLevel level);
+static void vk_free_cmd_buffer(VIVulkan* vk, VICommand cmd);
+static bool vk_has_format_features(VIVulkan* vk, VkFormat format, VkImageTiling tiling, VkFormatFeatureFlags features);
 static void vk_default_configure_swapchain(const VIPhysicalDevice* device, void* window, VISwapchainInfo* out_info);
 
 static void gl_device_present_frame(VIDevice device);
@@ -611,12 +616,12 @@ static void gl_create_compute_pipeline(VIDevice device, VIComputePipeline pipeli
 static void gl_destroy_compute_pipeline(VIDevice device, VIComputePipeline pipeline);
 static void gl_create_buffer(VIDevice device, VIBuffer buffer, const VIBufferInfo* info);
 static void gl_destroy_buffer(VIDevice device, VIBuffer buffer);
-static void gl_create_image(OpenGL* gl, VIImage image, const VIImageInfo* info);
-static void gl_destroy_image(OpenGL* gl, VIImage image);
-static void gl_create_framebuffer(OpenGL* gl, VIFramebuffer fb, const VIFramebufferInfo* info);
-static void gl_destroy_framebuffer(OpenGL* gl, VIFramebuffer fb);
-static void gl_create_swapchain_framebuffer(OpenGL* gl, VIFramebuffer fb);
-static void gl_create_swapchain_pass(OpenGL* gl, VIPass pass);
+static void gl_create_image(VIOpenGL* gl, VIImage image, const VIImageInfo* info);
+static void gl_destroy_image(VIOpenGL* gl, VIImage image);
+static void gl_create_framebuffer(VIOpenGL* gl, VIFramebuffer fb, const VIFramebufferInfo* info);
+static void gl_destroy_framebuffer(VIOpenGL* gl, VIFramebuffer fb);
+static void gl_create_swapchain_framebuffer(VIOpenGL* gl, VIFramebuffer fb);
+static void gl_create_swapchain_pass(VIOpenGL* gl, VIPass pass);
 static void gl_alloc_cmd_buffer(VIDevice device, VICommand cmd);
 static void gl_free_command(VIDevice device, VICommand cmd);
 static void gl_alloc_set(VIDevice device, VISet set);
@@ -796,7 +801,7 @@ static void vi_free(void* ptr)
 	free(header);
 }
 
-static void vk_create_instance(Vulkan* vk, bool enable_validation)
+static void vk_create_instance(VIVulkan* vk, bool enable_validation)
 {
 	// available layers and extensions
 	{
@@ -860,13 +865,13 @@ static void vk_create_instance(Vulkan* vk, bool enable_validation)
 	VK_CHECK(vkCreateInstance(&instanceCI, NULL, &vk->instance));
 }
 
-static void vk_destroy_instance(Vulkan* vk)
+static void vk_destroy_instance(VIVulkan* vk)
 {
 	vkDestroyInstance(vk->instance, NULL);
 	vk->instance = NULL;
 }
 
-static void vk_create_surface(Vulkan* vk)
+static void vk_create_surface(VIVulkan* vk)
 {
 	GLFWwindow* window = glfwGetCurrentContext();
 
@@ -878,13 +883,13 @@ static void vk_create_surface(Vulkan* vk)
 	VK_CHECK(vkCreateWin32SurfaceKHR(vk->instance, &surfaceCI, NULL, &vk->surface));
 }
 
-static void vk_destroy_surface(Vulkan* vk)
+static void vk_destroy_surface(VIVulkan* vk)
 {
 	vkDestroySurfaceKHR(vk->instance, vk->surface, NULL);
 	vk->surface = NULL;
 }
 
-static void vk_create_device(Vulkan* vk, VIDevice device, const VIDeviceInfo* info)
+static void vk_create_device(VIVulkan* vk, VIDevice device, const VIDeviceInfo* info)
 {
 	std::vector<VkPhysicalDevice> handles;
 	uint32_t pdevice_count;
@@ -1037,13 +1042,13 @@ static void vk_create_device(Vulkan* vk, VIDevice device, const VIDeviceInfo* in
 	vkGetDeviceQueue(vk->device, family_idx_present, 0, &device->queue_present.vk_handle);
 }
 
-static void vk_destroy_device(Vulkan* vk)
+static void vk_destroy_device(VIVulkan* vk)
 {
 	vkDestroyDevice(vk->device, NULL);
 	vk->device = NULL;
 }
 
-static void vk_create_swapchain(Vulkan* vk, const VISwapchainInfo* info, uint32_t min_image_count)
+static void vk_create_swapchain(VIVulkan* vk, const VISwapchainInfo* info, uint32_t min_image_count)
 {
 	VIPhysicalDevice* pdevice = vk->pdevice_chosen;
 
@@ -1133,7 +1138,7 @@ static void vk_create_swapchain(Vulkan* vk, const VISwapchainInfo* info, uint32_
 	}
 }
 
-static void vk_destroy_swapchain(Vulkan* vk)
+static void vk_destroy_swapchain(VIVulkan* vk)
 {
 	for (uint32_t i = 0; i < vk->swapchain.images.size(); i++)
 		vk_destroy_image_view(vk, vk->swapchain.images.data() + i);
@@ -1148,7 +1153,7 @@ static void vk_destroy_swapchain(Vulkan* vk)
 	vk->swapchain.handle = VK_NULL_HANDLE;
 }
 
-static void vk_create_image(Vulkan* vk, VIImage image, const VkImageCreateInfo* info, const VkMemoryPropertyFlags& properties)
+static void vk_create_image(VIVulkan* vk, VIImage image, const VkImageCreateInfo* info, const VkMemoryPropertyFlags& properties)
 {
 	image->flags |= VI_IMAGE_FLAG_CREATED_IMAGE_BIT;
 
@@ -1161,7 +1166,7 @@ static void vk_create_image(Vulkan* vk, VIImage image, const VkImageCreateInfo* 
 	VK_CHECK(vmaCreateImage(vk->vma, info, &allocCI, &image->vk.handle, &image->vk.alloc, nullptr));
 }
 
-static void vk_destroy_image(Vulkan* vk, VIImage image)
+static void vk_destroy_image(VIVulkan* vk, VIImage image)
 {
 	VI_ASSERT(image->flags & VI_IMAGE_FLAG_CREATED_IMAGE_BIT);
 
@@ -1170,14 +1175,14 @@ static void vk_destroy_image(Vulkan* vk, VIImage image)
 	image->flags &= ~VI_IMAGE_FLAG_CREATED_IMAGE_BIT;
 }
 
-static void vk_create_image_view(Vulkan* vk, VIImage image, const VkImageViewCreateInfo* info)
+static void vk_create_image_view(VIVulkan* vk, VIImage image, const VkImageViewCreateInfo* info)
 {
 	image->flags |= VI_IMAGE_FLAG_CREATED_IMAGE_VIEW_BIT;
 
 	VK_CHECK(vkCreateImageView(vk->device, info, NULL, &image->vk.view_handle));
 }
 
-static void vk_destroy_image_view(Vulkan* vk, VIImage image)
+static void vk_destroy_image_view(VIVulkan* vk, VIImage image)
 {
 	VI_ASSERT(image->flags & VI_IMAGE_FLAG_CREATED_IMAGE_VIEW_BIT);
 
@@ -1186,14 +1191,14 @@ static void vk_destroy_image_view(Vulkan* vk, VIImage image)
 	image->flags &= ~VI_IMAGE_FLAG_CREATED_IMAGE_VIEW_BIT;
 }
 
-static void vk_create_sampler(Vulkan* vk, VIImage image, const VkSamplerCreateInfo* info)
+static void vk_create_sampler(VIVulkan* vk, VIImage image, const VkSamplerCreateInfo* info)
 {
 	image->flags |= VI_IMAGE_FLAG_CREATED_SAMPLER_BIT;
 
 	VK_CHECK(vkCreateSampler(vk->device, info, nullptr, &image->vk.sampler_handle));
 }
 
-static void vk_destroy_sampler(Vulkan* vk, VIImage image)
+static void vk_destroy_sampler(VIVulkan* vk, VIImage image)
 {
 	VI_ASSERT(image->flags & VI_IMAGE_FLAG_CREATED_SAMPLER_BIT);
 
@@ -1202,7 +1207,7 @@ static void vk_destroy_sampler(Vulkan* vk, VIImage image)
 	image->flags &= ~VI_IMAGE_FLAG_CREATED_SAMPLER_BIT;
 }
 
-static void vk_create_framebuffer(Vulkan* vk, VIFramebuffer fb, VIPass pass, VkExtent2D extent, uint32_t atch_count, VIImage* atchs)
+static void vk_create_framebuffer(VIVulkan* vk, VIFramebuffer fb, VIPass pass, VkExtent2D extent, uint32_t atch_count, VIImage* atchs)
 {
 	VkImageView attachments[32];
 	VI_ASSERT(atch_count <= VI_ARR_SIZE(attachments));
@@ -1221,14 +1226,14 @@ static void vk_create_framebuffer(Vulkan* vk, VIFramebuffer fb, VIPass pass, VkE
 	VK_CHECK(vkCreateFramebuffer(vk->device, &fbI, NULL, &fb->vk.handle));
 }
 
-static void vk_destroy_framebuffer(Vulkan* vk, VIFramebuffer fb)
+static void vk_destroy_framebuffer(VIVulkan* vk, VIFramebuffer fb)
 {
 	vkDestroyFramebuffer(vk->device, fb->vk.handle, NULL);
 
 	fb->vk.handle = VK_NULL_HANDLE;
 }
 
-static void vk_alloc_cmd_buffer(Vulkan* vk, VICommand cmd, VkCommandPool pool, VkCommandBufferLevel level)
+static void vk_alloc_cmd_buffer(VIVulkan* vk, VICommand cmd, VkCommandPool pool, VkCommandBufferLevel level)
 {
 	VkCommandBufferAllocateInfo bufferAI{};
 	bufferAI.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -1239,14 +1244,14 @@ static void vk_alloc_cmd_buffer(Vulkan* vk, VICommand cmd, VkCommandPool pool, V
 	VK_CHECK(vkAllocateCommandBuffers(vk->device, &bufferAI, &cmd->vk.handle));
 }
 
-static void vk_free_cmd_buffer(Vulkan* vk, VICommand cmd)
+static void vk_free_cmd_buffer(VIVulkan* vk, VICommand cmd)
 {
 	VICommandPool pool = cmd->pool;
 
 	vkFreeCommandBuffers(vk->device, pool->vk_handle, 1, &cmd->vk.handle);
 }
 
-bool vk_has_format_features(Vulkan* vk, VkFormat format, VkImageTiling tiling, VkFormatFeatureFlags features)
+bool vk_has_format_features(VIVulkan* vk, VkFormat format, VkImageTiling tiling, VkFormatFeatureFlags features)
 {
 	VkFormatProperties props;
 	vkGetPhysicalDeviceFormatProperties(vk->pdevice, format, &props);
@@ -1331,7 +1336,7 @@ static void vk_default_configure_swapchain(const VIPhysicalDevice* pdevice, void
 
 static void gl_device_present_frame(VIDevice device)
 {
-	OpenGL* gl = &device->gl;
+	VIOpenGL* gl = &device->gl;
 	GLFWwindow* window = glfwGetCurrentContext();
 
 	glfwSwapBuffers(window);
@@ -1620,7 +1625,7 @@ static void gl_destroy_buffer(VIDevice device, VIBuffer buffer)
 	glDeleteBuffers(1, &buffer->gl.handle);
 }
 
-static void gl_create_image(OpenGL* gl, VIImage image, const VIImageInfo* info)
+static void gl_create_image(VIOpenGL* gl, VIImage image, const VIImageInfo* info)
 {
 	GLenum target;
 	cast_image_type(image->info.type, &target);
@@ -1660,12 +1665,12 @@ static void gl_create_image(OpenGL* gl, VIImage image, const VIImageInfo* info)
 	GL_CHECK(glTexParameteri(target, GL_TEXTURE_MAG_FILTER, filter));
 }
 
-static void gl_destroy_image(OpenGL* gl, VIImage image)
+static void gl_destroy_image(VIOpenGL* gl, VIImage image)
 {
 	GL_CHECK(glDeleteTextures(1, &image->gl.handle));
 }
 
-static void gl_create_framebuffer(OpenGL* gl, VIFramebuffer fb, const VIFramebufferInfo* info)
+static void gl_create_framebuffer(VIOpenGL* gl, VIFramebuffer fb, const VIFramebufferInfo* info)
 {
 	GL_CHECK(glCreateFramebuffers(1, &fb->gl.handle));
 	glBindFramebuffer(GL_FRAMEBUFFER, fb->gl.handle);
@@ -1690,25 +1695,25 @@ static void gl_create_framebuffer(OpenGL* gl, VIFramebuffer fb, const VIFramebuf
 	}
 }
 
-static void gl_destroy_framebuffer(OpenGL* gl, VIFramebuffer fb)
+static void gl_destroy_framebuffer(VIOpenGL* gl, VIFramebuffer fb)
 {
 	GL_CHECK(glDeleteFramebuffers(1, &fb->gl.handle));
 }
 
 // OpenGL swapchain-framebuffer is just a wrapper over the default-framebuffer
-static void gl_create_swapchain_framebuffer(OpenGL* gl, VIFramebuffer fb)
+static void gl_create_swapchain_framebuffer(VIOpenGL* gl, VIFramebuffer fb)
 {
 	int width, height;
 	GLFWwindow* window = glfwGetCurrentContext();
 	glfwGetFramebufferSize(window, &width, &height);
 
-	fb->device = gl->device;
+	fb->device = gl->vi_device;
 	fb->gl.handle = 0;
 	fb->extent.width = (uint32_t)width;
 	fb->extent.height = (uint32_t)height;
 }
 
-static void gl_create_swapchain_pass(OpenGL* gl, VIPass pass)
+static void gl_create_swapchain_pass(VIOpenGL* gl, VIPass pass)
 {
 	// TODO: single source of truth with vulkan swapchain pass
 
@@ -2051,7 +2056,7 @@ static void gl_cmd_execute_begin_pass(VIDevice device, GLCommand* glcmd)
 	device->gl.active_framebuffer = framebuffer;
 	glDisable(GL_SCISSOR_TEST); // until gl_cmd_execute_set_scissor
 
-	// flip OpenGL clip space Y axis when rendering to offscreen framebuffers
+	// flip VIOpenGL clip space Y axis when rendering to offscreen framebuffers
 	bool flip_gl_clip_origin = framebuffer != device->swapchain_framebuffers;
 	//flip_gl_clip_origin = false;
 	GLenum clip_origin = flip_gl_clip_origin ? GL_UPPER_LEFT : GL_LOWER_LEFT;
@@ -2729,8 +2734,9 @@ VIDevice vi_create_device_vk(const VIDeviceInfo* info, VIDeviceLimits* limits)
 	device->queue_transfer.device = device;
 	device->queue_present.device = device;
 
-	Vulkan* vk = &device->vk;
-	new (vk)Vulkan();
+	VIVulkan* vk = &device->vk;
+	new (vk)VIVulkan();
+	vk->vi_device = device;
 
 	// create Instance, Surface, and a Device
 	{
@@ -2917,9 +2923,9 @@ VIDevice vi_create_device_gl(const VIDeviceInfo* info, VIDeviceLimits* limits)
 	device->queue_transfer.device = device;
 	device->queue_present.device = device;
 
-	OpenGL* gl = &device->gl;
-	new (gl)OpenGL();
-	gl->device = device;
+	VIOpenGL* gl = &device->gl;
+	new (gl)VIOpenGL();
+	gl->vi_device = device;
 	gl->frame.fence.frame_complete.device = device;
 	gl->frame.semaphore.image_acquired.device = device;
 	gl->frame.semaphore.present_ready.device = device;
@@ -2963,7 +2969,7 @@ void vi_destroy_device(VIDevice device)
 {
 	if (device->backend == VI_BACKEND_VULKAN)
 	{
-		Vulkan* vk = &device->vk;
+		VIVulkan* vk = &device->vk;
 
 		for (uint32_t i = 0; i < vk->frames_in_flight; i++)
 		{
@@ -2988,13 +2994,13 @@ void vi_destroy_device(VIDevice device)
 
 		vi_free(vk->frames);
 
-		vk->~Vulkan();
+		vk->~VIVulkan();
 	}
 	else
 	{
-		OpenGL* gl = &device->gl;
+		VIOpenGL* gl = &device->gl;
 
-		gl->~OpenGL();
+		gl->~VIOpenGL();
 	}
 
 	vi_free(device->swapchain_framebuffers);
@@ -3081,7 +3087,7 @@ void vi_set_update(VISet set, uint32_t update_count, const VISetUpdateInfo* upda
 		return;
 	}
 
-	Vulkan* vk = &set->device->vk;
+	VIVulkan* vk = &set->device->vk;
 
 	std::vector<VkDescriptorImageInfo> write_images;
 	std::vector<VkDescriptorBufferInfo> write_buffers;
@@ -3178,7 +3184,7 @@ VIPass vi_create_pass(VIDevice device, const VIPassInfo* info)
 	if (device->backend == VI_BACKEND_OPENGL)
 		return pass;
 
-	Vulkan* vk = &device->vk;
+	VIVulkan* vk = &device->vk;
 
 	std::vector<VkAttachmentDescription> vk_attachments(info->color_attachment_count);
 	for (uint32_t i = 0; i < info->color_attachment_count; i++)
@@ -3234,7 +3240,7 @@ void vi_destroy_pass(VIDevice device, VIPass pass)
 {
 	if (device->backend == VI_BACKEND_VULKAN)
 	{
-		Vulkan* vk = &pass->device->vk;
+		VIVulkan* vk = &pass->device->vk;
 		vkDestroyRenderPass(vk->device, pass->vk.handle, nullptr);
 	}
 
@@ -3264,7 +3270,7 @@ VIModule vi_create_module(VIDevice device, const VIModuleInfo* info)
 	moduleCI.pCode = (const uint32_t*)byte_code.data();
 	moduleCI.codeSize = byte_code.size();
 
-	Vulkan* vk = &device->vk;
+	VIVulkan* vk = &device->vk;
 	VK_CHECK(vkCreateShaderModule(vk->device, &moduleCI, NULL, &module->vk.handle));
 
 	return module;
@@ -3276,7 +3282,7 @@ void vi_destroy_module(VIDevice device, VIModule module)
 		gl_destroy_module(device, module);
 	else
 	{
-		Vulkan* vk = &module->device->vk;
+		VIVulkan* vk = &module->device->vk;
 		vkDestroyShaderModule(vk->device, module->vk.handle, NULL);
 	}
 
@@ -3302,7 +3308,7 @@ VIBuffer vi_create_buffer(VIDevice device, const VIBufferInfo* info)
 		return buffer;
 	}
 
-	Vulkan* vk = &device->vk;
+	VIVulkan* vk = &device->vk;
 
 	VmaAllocationCreateInfo allocCI{};
 	allocCI.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
@@ -3330,7 +3336,7 @@ void vi_destroy_buffer(VIDevice device, VIBuffer buffer)
 		gl_destroy_buffer(device, buffer);
 	else
 	{
-		Vulkan* vk = &device->vk;
+		VIVulkan* vk = &device->vk;
 		vmaDestroyBuffer(vk->vma, buffer->vk.handle, buffer->vk.alloc);
 	}
 
@@ -3356,7 +3362,7 @@ VIImage vi_create_image(VIDevice device, const VIImageInfo* info)
 		return image;
 	}
 
-	Vulkan* vk = &device->vk;
+	VIVulkan* vk = &device->vk;
 
 	VkFormat format;
 	VkImageAspectFlags aspect;
@@ -3461,7 +3467,7 @@ VISetLayout vi_create_set_layout(VIDevice device, const VISetLayoutInfo* info)
 		return layout;
 	}
 
-	Vulkan* vk = &device->vk;
+	VIVulkan* vk = &device->vk;
 
 	std::vector<VkDescriptorSetLayoutBinding> bindings;
 	bindings.resize(info->binding_count);
@@ -3486,7 +3492,7 @@ void vi_destroy_set_layout(VIDevice device, VISetLayout layout)
 {
 	if (device->backend == VI_BACKEND_VULKAN)
 	{
-		Vulkan* vk = &device->vk;
+		VIVulkan* vk = &device->vk;
 		vkDestroyDescriptorSetLayout(vk->device, layout->vk.handle, nullptr);
 	}
 
@@ -3503,7 +3509,7 @@ VISetPool vi_create_set_pool(VIDevice device, const VISetPoolInfo* info)
 	if (device->backend == VI_BACKEND_OPENGL)
 		return pool;
 
-	Vulkan* vk = &device->vk;
+	VIVulkan* vk = &device->vk;
 
 	std::vector<VkDescriptorPoolSize> poolSizes;
 	cast_set_pool_resources(info->resource_count, info->resources, poolSizes);
@@ -3592,7 +3598,7 @@ VIPipelineLayout vi_create_pipeline_layout(VIDevice device, const VIPipelineLayo
 		return layout;
 	}
 
-	Vulkan* vk = &device->vk;
+	VIVulkan* vk = &device->vk;
 
 	std::vector<VkDescriptorSetLayout> vklayouts(info->set_layout_count);
 	for (uint32_t i = 0; i < info->set_layout_count; i++)
@@ -3615,7 +3621,7 @@ void vi_destroy_pipeline_layout(VIDevice device, VIPipelineLayout layout)
 		gl_destroy_pipeline_layout(device, layout);
 	else
 	{
-		Vulkan* vk = &device->vk;
+		VIVulkan* vk = &device->vk;
 		vkDestroyPipelineLayout(vk->device, layout->vk.handle, nullptr);
 	}
 
@@ -3648,7 +3654,7 @@ VIPipeline vi_create_pipeline(VIDevice device, const VIPipelineInfo* info)
 		return pipeline;
 	}
 
-	Vulkan* vk = &device->vk;
+	VIVulkan* vk = &device->vk;
 
 	VkPipelineColorBlendAttachmentState blendState{};
 	blendState.blendEnable = VK_FALSE;
@@ -3796,7 +3802,7 @@ void vi_destroy_pipeline(VIDevice device, VIPipeline pipeline)
 		gl_destroy_pipeline(device, pipeline);
 	else
 	{
-		Vulkan* vk = &device->vk;
+		VIVulkan* vk = &device->vk;
 		vkDestroyPipeline(vk->device, pipeline->vk.handle, nullptr);
 	}
 
@@ -3817,7 +3823,7 @@ VIComputePipeline vi_create_compute_pipeline(VIDevice device, const VIComputePip
 		return pipeline;
 	}
 
-	Vulkan* vk = &device->vk;
+	VIVulkan* vk = &device->vk;
 
 	VkPipelineShaderStageCreateInfo stageCI{};
 	stageCI.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -3842,7 +3848,7 @@ void vi_destroy_compute_pipeline(VIDevice device, VIComputePipeline pipeline)
 		gl_destroy_compute_pipeline(device, pipeline);
 	else
 	{
-		Vulkan* vk = &device->vk;
+		VIVulkan* vk = &device->vk;
 		vkDestroyPipeline(vk->device, pipeline->vk.handle, nullptr);
 	}
 
@@ -3865,7 +3871,7 @@ VIFramebuffer vi_create_framebuffer(VIDevice device, const VIFramebufferInfo* in
 
 	if (device->backend == VI_BACKEND_OPENGL)
 	{
-		OpenGL* gl = &device->gl;
+		VIOpenGL* gl = &device->gl;
 		gl_create_framebuffer(gl, framebuffer, info);
 		return framebuffer;
 	}
@@ -3897,12 +3903,12 @@ void vi_destroy_framebuffer(VIDevice device, VIFramebuffer framebuffer)
 {
 	if (device->backend == VI_BACKEND_OPENGL)
 	{
-		OpenGL* gl = &device->gl;
+		VIOpenGL* gl = &device->gl;
 		gl_destroy_framebuffer(gl, framebuffer);
 	}
 	else
 	{
-		Vulkan* vk = &device->vk;
+		VIVulkan* vk = &device->vk;
 		vkDestroyFramebuffer(vk->device, framebuffer->vk.handle, nullptr);
 	}
 
@@ -3940,7 +3946,7 @@ void vi_destroy_command_pool(VIDevice device, VICommandPool pool)
 
 VICommand vi_alloc_command(VIDevice device, VICommandPool pool, VkCommandBufferLevel level)
 {
-	Vulkan* vk = &device->vk;
+	VIVulkan* vk = &device->vk;
 	VICommand cmd = (VICommand)vi_malloc(sizeof(VICommandObj));
 	new (cmd)VICommandObj();
 	cmd->device = device;
@@ -3962,7 +3968,7 @@ void vi_free_command(VIDevice device, VICommand cmd)
 		gl_free_command(device, cmd);
 	else
 	{
-		Vulkan* vk = &device->vk;
+		VIVulkan* vk = &device->vk;
 		vkFreeCommandBuffers(vk->device, cmd->pool->vk_handle, 1, &cmd->vk.handle);
 	}
 
@@ -4030,7 +4036,7 @@ uint32_t vi_device_next_frame(VIDevice device, VISemaphore* image_acquired, VISe
 
 	if (device->backend == VI_BACKEND_OPENGL)
 	{
-		OpenGL* gl = &device->gl;
+		VIOpenGL* gl = &device->gl;
 		gl->frame.semaphore.image_acquired.gl_signal = true;
 		gl->frame.semaphore.present_ready.gl_signal = false;
 		gl->frame.fence.frame_complete.gl_signal = false;
@@ -4041,7 +4047,7 @@ uint32_t vi_device_next_frame(VIDevice device, VISemaphore* image_acquired, VISe
 		return 0;
 	}
 
-	Vulkan* vk = &device->vk;
+	VIVulkan* vk = &device->vk;
 
 	vk->frame_idx = (vk->frame_idx + 1) % vk->frames_in_flight;
 
@@ -4077,7 +4083,7 @@ void vi_device_present_frame(VIDevice device)
 		return;
 	}
 
-	Vulkan* vk = &device->vk;
+	VIVulkan* vk = &device->vk;
 	VIFrame* frame = vk->frames + vk->frame_idx;
 
 	VkPresentInfoKHR presentI;
@@ -4328,7 +4334,7 @@ void vi_cmd_begin_pass(VICommand cmd, const VIPassBeginInfo* info)
 	}
 
 	VIDevice device = cmd->device;
-	Vulkan* vk = &device->vk;
+	VIVulkan* vk = &device->vk;
 
 	size_t swapchain_framebuffer_count = device->vk.swapchain.images.size();
 	device->vk.pass_uses_swapchain_framebuffer = false;
@@ -4608,7 +4614,7 @@ VIBuffer vi_util_create_buffer_staged(VIDevice device, VIBufferInfo* info, void*
 		return buffer;
 	}
 
-	Vulkan* vk = &device->vk;
+	VIVulkan* vk = &device->vk;
 
 	VIBufferInfo src_buffer_info;
 	src_buffer_info.type = info->type;
@@ -4683,7 +4689,7 @@ VIImage vi_util_create_image_staged(VIDevice device, VIImageInfo* info, void* da
 	size_t pixel_size = 4;
 	size_t image_size = info->width * info->height * pixel_size * info->layers;
 
-	Vulkan* vk = &device->vk;
+	VIVulkan* vk = &device->vk;
 	VIBufferInfo src_buffer_info;
 	src_buffer_info.type = VI_BUFFER_TYPE_NONE;
 	src_buffer_info.size = image_size;
