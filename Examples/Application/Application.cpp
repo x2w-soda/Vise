@@ -139,11 +139,12 @@ VISetLayout Application::CreateSetLayout(const std::initializer_list<VISetBindin
 	return vi_create_set_layout(mDevice, &info);
 }
 
-VIPipelineLayout Application::CreatePipelineLayout(const std::initializer_list<VISetLayout>& list)
+VIPipelineLayout Application::CreatePipelineLayout(const std::initializer_list<VISetLayout>& list, uint32_t push_constant_size)
 {
 	VIPipelineLayoutInfo info;
 	info.set_layout_count = list.size();
 	info.set_layouts = list.begin();
+	info.push_constant_size = push_constant_size;
 
 	return vi_create_pipeline_layout(mDevice, &info);
 }
@@ -229,8 +230,9 @@ VkSubpassDependency Application::MakeSubpassDependency(
 void Application::PrintDeviceLimits(const VIDeviceLimits& limits)
 {
 	printf("== vise device limits (%s):\n", mBackend == VI_BACKEND_VULKAN ? "Vulkan" : "OpenGL");
-	printf(" - swapchain framebuffer count %d\n", limits.swapchain_framebuffer_count);
-	printf(" - max compute workgroup count (%d, %d, %d)\n", limits.max_compute_workgroup_count[0], limits.max_compute_workgroup_count[1], limits.max_compute_workgroup_count[2]);
-	printf(" - max compute workgroup size (%d, %d, %d)\n", limits.max_compute_workgroup_size[0], limits.max_compute_workgroup_size[1], limits.max_compute_workgroup_size[2]);
-	printf(" - max compute workgroup invocations %d\n", limits.max_compute_workgroup_invocations);
+	printf(" - swapchain framebuffer count %d\n", (int)limits.swapchain_framebuffer_count);
+	printf(" - max push constant size %d\n", (int)limits.max_push_constant_size);
+	printf(" - max compute workgroup count (%d, %d, %d)\n", (int)limits.max_compute_workgroup_count[0], (int)limits.max_compute_workgroup_count[1], (int)limits.max_compute_workgroup_count[2]);
+	printf(" - max compute workgroup size  (%d, %d, %d)\n", (int)limits.max_compute_workgroup_size[0], (int)limits.max_compute_workgroup_size[1], (int)limits.max_compute_workgroup_size[2]);
+	printf(" - max compute workgroup invocations %d\n", (int)limits.max_compute_workgroup_invocations);
 }

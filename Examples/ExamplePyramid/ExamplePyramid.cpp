@@ -62,6 +62,7 @@ ExamplePyramid::ExamplePyramid(VIBackend backend)
 		mSetLayout = vi_create_set_layout(mDevice, &layout_info);
 
 		VIPipelineLayoutInfo pipelineLayoutI;
+		pipelineLayoutI.push_constant_size = 0;
 		pipelineLayoutI.set_layout_count = 1;
 		pipelineLayoutI.set_layouts = &mSetLayout;
 		mPipelineLayout = vi_create_pipeline_layout(mDevice, &pipelineLayoutI);

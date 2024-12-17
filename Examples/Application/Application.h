@@ -123,7 +123,7 @@ protected:
 	VISetLayout CreateSetLayout(const std::initializer_list<VISetBinding>& list);
 
 	// helper to reduce pipeline layout creation verbosity
-	VIPipelineLayout CreatePipelineLayout(const std::initializer_list<VISetLayout>& list);
+	VIPipelineLayout CreatePipelineLayout(const std::initializer_list<VISetLayout>& list, uint32_t push_constant_size = 0);
 
 	// helper to reduce shader module creation verbosity
 	VIModule CreateModule(VIPipelineLayout layout, VIModuleTypeBit type, const char* vise_glsl);

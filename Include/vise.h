@@ -159,10 +159,11 @@ struct VIDeviceInfo
 
 struct VIDeviceLimits
 {
-	int swapchain_framebuffer_count;
-	int max_compute_workgroup_count[3];     // vi_cmd_dispatch dimension limits
-	int max_compute_workgroup_size[3];      // vise GLSL workgroup local size limits
-	int max_compute_workgroup_invocations;  // vise GLSL workgroup local size product limit
+	uint32_t swapchain_framebuffer_count;
+	uint32_t max_push_constant_size;
+	uint32_t max_compute_workgroup_count[3];     // vi_cmd_dispatch dimension limits
+	uint32_t max_compute_workgroup_size[3];      // vise GLSL workgroup local size limits
+	uint32_t max_compute_workgroup_invocations;  // vise GLSL workgroup local size product limit
 };
 
 struct VIPhysicalDevice
@@ -284,6 +285,7 @@ struct VIVertexBinding
 
 struct VIPipelineLayoutInfo
 {
+	uint32_t push_constant_size;
 	uint32_t set_layout_count;
 	const VISetLayout* set_layouts;
 };
@@ -461,6 +463,7 @@ VI_API void vi_cmd_bind_vertex_buffers(VICommand cmd, uint32_t first_binding, ui
 VI_API void vi_cmd_bind_index_buffer(VICommand cmd, VIBuffer buffer, VkIndexType index_type);
 VI_API void vi_cmd_bind_set(VICommand cmd, uint32_t set_idx, VISet set, VIPipeline pipeline);
 VI_API void vi_cmd_bind_set(VICommand cmd, uint32_t set_idx, VISet set, VIComputePipeline pipeline);
+VI_API void vi_cmd_push_constants(VICommand cmd, VIPipelineLayout layout, uint32_t offset, uint32_t size, const void* value);
 VI_API void vi_cmd_set_viewport(VICommand cmd, VkViewport viewport);
 VI_API void vi_cmd_set_scissor(VICommand cmd, VkRect2D scissor);
 VI_API void vi_cmd_draw(VICommand cmd, const VIDrawInfo* info);

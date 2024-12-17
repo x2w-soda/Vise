@@ -39,6 +39,7 @@ ExampleTriangle::ExampleTriangle(VIBackend backend)
 
 	VIPipelineLayoutInfo pipelineLayoutI;
 	pipelineLayoutI.set_layout_count = 0;
+	pipelineLayoutI.push_constant_size = 0;
 	mPipelineLayout = vi_create_pipeline_layout(mDevice, &pipelineLayoutI);
 
 	VIModuleInfo moduleInfo;
