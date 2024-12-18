@@ -82,6 +82,7 @@ enum VIGLSLType
 {
 	VI_GLSL_TYPE_VEC2,
 	VI_GLSL_TYPE_VEC3,
+	VI_GLSL_TYPE_VEC4,
 };
 
 enum VIBufferType

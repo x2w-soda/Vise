@@ -110,6 +110,7 @@
 struct VIVulkan;
 struct VIFrame;
 struct VIOpenGL;
+struct GLPushConstant;
 struct HostMalloc;
 
 static void* vi_malloc(size_t size);
@@ -157,6 +158,8 @@ struct VIModuleObj : VIObject
 
 		struct
 		{
+			uint32_t push_constant_count;
+			GLPushConstant* push_constants;
 			GLuint shader;
 			char* patched_glsl;
 		} gl;
@@ -181,6 +184,7 @@ struct VICommandObj : VIObject
 			uint32_t list_capacity;
 			uint32_t list_size;
 			GLCommand* list;
+			VIPipeline active_pipeline; // during recording
 		} gl;
 	};
 };
@@ -297,6 +301,8 @@ struct GLPushConstant
 {
 	uint32_t size;
 	uint32_t offset;
+	uint32_t uniform_arr_size;
+	VIGLSLType uniform_glsl_type;
 	std::string uniform_name;
 };
 
@@ -314,9 +320,7 @@ struct VIPipelineLayoutObj : VIObject
 
 		struct
 		{
-			uint32_t push_constant_count;
 			uint32_t remap_count;
-			GLPushConstant* push_constants;
 			GLRemap* remaps;
 		} gl;
 	};
@@ -346,6 +350,8 @@ struct VIPipelineObj : VIObject
 	std::vector<VIVertexBinding> vertex_bindings;
 	std::vector<VIVertexAttribute> vertex_attributes;
 	VIPipelineLayout layout;
+	VIModule vertex_module;
+	VIModule fragment_module;
 
 	union
 	{
@@ -366,6 +372,7 @@ struct VIPipelineObj : VIObject
 struct VIComputePipelineObj : VIObject
 {
 	VIPipelineLayout layout;
+	VIModule compute_module;
 
 	union
 	{
@@ -430,9 +437,9 @@ struct VIOpenGL
 {
 	VIDevice vi_device;
 	GLenum index_type;
+	GLuint active_program;  // during execution
+	VIModule active_module; // during execution
 	VIFramebuffer active_framebuffer;
-	VIPipelineLayout active_pipeline_layout; // TODO: move into VICommand
-	GLuint active_program; // TODO: move into VICommand once we support multithreaded command recording
 	VIFrame frame;
 	std::vector<GLSubmitInfo> submits;
 };
@@ -493,17 +500,20 @@ enum GLCommandType
 
 struct GLCommandPushConstants
 {
-	GLCommandPushConstants() {}
+	GLCommandPushConstants(uint32_t offset_, uint32_t size_)
+		: offset(offset_), size(size_)
+	{
+		value = (uint8_t*)vi_malloc(size);
+	}
+
 	~GLCommandPushConstants()
 	{
-		if (value != local)
-			vi_free((void*)value);
+		vi_free((void*)value);
 	}
 
 	uint32_t offset;
 	uint32_t size;
 	uint8_t* value;
-	uint8_t local[64];
 };
 
 struct GLCommandBindSet
@@ -636,7 +646,7 @@ static void gl_create_module(VIDevice device, VIModule module, const VIModuleInf
 static void gl_destroy_module(VIDevice device, VIModule module);
 static void gl_create_pipeline_layout(VIDevice device, VIPipelineLayout layout, const VIPipelineLayoutInfo* info);
 static void gl_destroy_pipeline_layout(VIDevice device, VIPipelineLayout layout);
-static void gl_create_pipeline(VIDevice device, VIPipeline pipeline, uint32_t module_count, VIModule* modules);
+static void gl_create_pipeline(VIDevice device, VIPipeline pipeline, VIModule vm, VIModule fm);
 static void gl_destroy_pipeline(VIDevice device, VIPipeline pipeline);
 static void gl_create_compute_pipeline(VIDevice device, VIComputePipeline pipeline, VIModule compute_module);
 static void gl_destroy_compute_pipeline(VIDevice device, VIComputePipeline pipeline);
@@ -673,7 +683,7 @@ static void gl_cmd_execute_copy_image_to_buffer(VIDevice device, GLCommand* glcm
 static void gl_cmd_execute_dispatch(VIDevice device, GLCommand* glcmd);
 
 static bool compile_vk(const char* src, std::vector<char>& byte_code, EShLanguage stage, const char* entry_point);
-static bool compile_gl(VIPipelineLayout layout, const char* src, std::string& patched, EShLanguage stage, const char* entry_point);
+static bool compile_gl(VIModule module, VIPipelineLayout layout, const char* src, std::string& patched, EShLanguage stage, const char* entry_point);
 static void flip_image_data(uint8_t* data, uint32_t image_width, uint32_t image_height, uint32_t texel_size);
 
 static void debug_print_compilation(const spirv_cross::CompilerGLSL& compiler, EShLanguage stage);
@@ -698,6 +708,7 @@ static void cast_set_binding(const VISetBinding* in_binding, VkDescriptorSetLayo
 static void cast_set_binding_type(VISetBindingType in_type, VkDescriptorType* out_type);
 static void cast_glsl_type(VIGLSLType in_type, VkFormat* out_format);
 static void cast_glsl_type(VIGLSLType in_type, GLint* out_component_count, GLenum* out_component_type);
+static void cast_glsl_type(const spirv_cross::SPIRType& in_type, VIGLSLType* out_type);
 static void cast_pipeline_vertex_input(uint32_t attr_count, VIVertexAttribute* attrs, uint32_t binding_count, VIVertexBinding* bindings,
 	std::vector<VkVertexInputAttributeDescription>& out_attrs, std::vector<VkVertexInputBindingDescription>& out_bindings);
 static void cast_image_memory_barrier(const VIImageMemoryBarrier& in_barrier, VkImageMemoryBarrier* out_barrier);
@@ -736,9 +747,10 @@ struct VIGLSLTypeEntry
 	GLenum gl_component_type;
 };
 
-static const VIGLSLTypeEntry vi_glsl_type_table[2] = {
-	{ VI_GLSL_TYPE_VEC2, VK_FORMAT_R32G32_SFLOAT,    2, GL_FLOAT },
-	{ VI_GLSL_TYPE_VEC3, VK_FORMAT_R32G32B32_SFLOAT, 3, GL_FLOAT },
+static const VIGLSLTypeEntry vi_glsl_type_table[3] = {
+	{ VI_GLSL_TYPE_VEC2, VK_FORMAT_R32G32_SFLOAT,       2, GL_FLOAT },
+	{ VI_GLSL_TYPE_VEC3, VK_FORMAT_R32G32B32_SFLOAT,    3, GL_FLOAT },
+	{ VI_GLSL_TYPE_VEC4, VK_FORMAT_R32G32B32A32_SFLOAT, 4, GL_FLOAT },
 };
 
 struct VISamplerFilterEntry
@@ -1448,7 +1460,7 @@ static void gl_create_module(VIDevice device, VIModule module, const VIModuleInf
 
 	cast_module_type_bit(info->type, &stage);
 	cast_module_type_bit(info->type, &glstage);
-	bool result = compile_gl(info->pipeline_layout, info->vise_glsl, patched, stage, VI_SHADER_ENTRY_POINT);
+	bool result = compile_gl(module, info->pipeline_layout, info->vise_glsl, patched, stage, VI_SHADER_ENTRY_POINT);
 	GLint glsl_size = patched.size() + 1;
 	module->gl.patched_glsl = (char*)vi_malloc(glsl_size);
 	memcpy(module->gl.patched_glsl, patched.data(), glsl_size - 1);
@@ -1473,10 +1485,12 @@ static void gl_create_module(VIDevice device, VIModule module, const VIModuleInf
 static void gl_destroy_module(VIDevice device, VIModule module)
 {
 	vi_free(module->gl.patched_glsl);
+	module->gl.patched_glsl = nullptr;
+
+	if (module->gl.push_constant_count > 0)
+		delete[] module->gl.push_constants;
 
 	glDeleteShader(module->gl.shader);
-
-	module->gl.patched_glsl = nullptr;
 }
 
 static void gl_create_pipeline_layout(VIDevice device, VIPipelineLayout layout, const VIPipelineLayoutInfo* info)
@@ -1534,27 +1548,20 @@ static void gl_create_pipeline_layout(VIDevice device, VIPipelineLayout layout, 
 	}
 	else
 		layout->gl.remaps = nullptr;
-
-	layout->gl.push_constant_count = 0;
-	layout->gl.push_constants = nullptr;
 }
 
 static void gl_destroy_pipeline_layout(VIDevice device, VIPipelineLayout layout)
 {
 	if (layout->gl.remaps)
 		vi_free(layout->gl.remaps);
-
-	if (layout->gl.push_constants)
-		delete[] layout->gl.push_constants;
 }
 
-static void gl_create_pipeline(VIDevice device, VIPipeline pipeline, uint32_t module_count, VIModule* modules)
+static void gl_create_pipeline(VIDevice device, VIPipeline pipeline, VIModule vm, VIModule fm)
 {
 	pipeline->gl.program = glCreateProgram();
 
-	for (uint32_t i = 0; i < module_count; i++)
-		glAttachShader(pipeline->gl.program, modules[i]->gl.shader);
-	
+	glAttachShader(pipeline->gl.program, vm->gl.shader);
+	glAttachShader(pipeline->gl.program, fm->gl.shader);
 	glLinkProgram(pipeline->gl.program);
 
 	GLint success;
@@ -1858,7 +1865,6 @@ static GLCommand* gl_append_command(VICommand cmd, GLCommandType type)
 
 	GLCommand* glcmd = cmd->gl.list + cmd->gl.list_size++;
 	glcmd->type = type;
-	// TODO: placement new for certain types
 
 	return glcmd;
 }
@@ -1882,6 +1888,7 @@ static void gl_reset_command(VIDevice device, VICommand cmd)
 			break;
 		case GL_COMMAND_TYPE_COPY_IMAGE_TO_BUFFER:
 			glcmd->copy_image_to_buffer.~GLCommandCopyImageToBuffer();
+			break;
 		default:
 			break;
 		}
@@ -1975,11 +1982,11 @@ static void gl_cmd_execute_push_constants(VIDevice device, GLCommand* glcmd)
 
 	uint32_t range_size = glcmd->push_constants.size;
 	uint32_t range_offset = glcmd->push_constants.offset;
-	VIPipelineLayout layout = device->gl.active_pipeline_layout;
+	VIModule module = device->gl.active_module;
 
-	for (uint32_t i = 0; i < layout->gl.push_constant_count; i++)
+	for (uint32_t i = 0; i < module->gl.push_constant_count; i++)
 	{
-		const GLPushConstant* pc = layout->gl.push_constants + i;
+		const GLPushConstant* pc = module->gl.push_constants + i;
 		GLint pc_loc = glGetUniformLocation(device->gl.active_program, pc->uniform_name.c_str());
 
 		// only update uniform variable if it is completely in range.
@@ -1987,11 +1994,10 @@ static void gl_cmd_execute_push_constants(VIDevice device, GLCommand* glcmd)
 		{
 			const uint8_t* value_base = glcmd->push_constants.value + (pc->offset - range_offset);
 
-			// TODO: match against VIGLSLType from spirv_cross instead of byte size...
-			switch (pc->size)
+			switch (pc->uniform_glsl_type)
 			{
-			case 16:
-				glUniform4fv(pc_loc, 1, (const GLfloat*)value_base);
+			case VI_GLSL_TYPE_VEC4:
+				glUniform4fv(pc_loc, pc->uniform_arr_size, (const GLfloat*)value_base);
 				break;
 			default:
 				VI_UNREACHABLE;
@@ -2059,8 +2065,17 @@ static void gl_cmd_execute_bind_pipeline(VIDevice device, GLCommand* glcmd)
 {
 	VI_ASSERT(glcmd->type == GL_COMMAND_TYPE_BIND_PIPELINE);
 
+	device->active_pipeline = glcmd->bind_pipeline;
+
+	// for OpenGL push constants, the lookup table is stored in each module,
+	// if both VM and FM have a lookup table they should be identical.
+	VIModule active_vm = device->active_pipeline->vertex_module;
+	VIModule active_fm = device->active_pipeline->fragment_module;
+
 	device->gl.active_program = glcmd->bind_pipeline->gl.program;
-	device->gl.active_pipeline_layout = glcmd->bind_pipeline->layout;
+	device->gl.active_module = active_vm;
+	if (active_vm->gl.push_constant_count == 0 && active_fm->gl.push_constant_count > 0)
+		device->gl.active_module = active_fm;
 
 	// TODO:
 	glEnable(GL_CULL_FACE);
@@ -2077,7 +2092,7 @@ void gl_cmd_execute_bind_compute_pipeline(VIDevice device, GLCommand* glcmd)
 	VI_ASSERT(glcmd->type == GL_COMMAND_TYPE_BIND_COMPUTE_PIPELINE);
 
 	device->gl.active_program = glcmd->bind_compute_pipeline->gl.program;
-	device->gl.active_pipeline_layout = glcmd->bind_compute_pipeline->layout;
+	device->gl.active_module = glcmd->bind_compute_pipeline->compute_module;
 
 	glUseProgram(glcmd->bind_compute_pipeline->gl.program);
 }
@@ -2290,9 +2305,7 @@ static bool compile_vk(const char* src, std::vector<char>& byte_code, EShLanguag
 	memcpy(byte_code.data(), spirv_data.data(), byte_code.size());
 }
 
-// Side Effect: if the shader module contains a push constant block, pipeline layout is modified to contain
-//              a lookup table for the corresponding uniform variables, used during gl_cmd_execute_push_constants.
-static bool compile_gl(VIPipelineLayout layout, const char* src, std::string& patched, EShLanguage stage, const char* entry_point)
+static bool compile_gl(VIModule module, VIPipelineLayout layout, const char* src, std::string& patched, EShLanguage stage, const char* entry_point)
 {
 	std::vector<char> byte_code;
 	compile_vk(src, byte_code, stage, entry_point);
@@ -2326,27 +2339,48 @@ static bool compile_gl(VIPipelineLayout layout, const char* src, std::string& pa
 			return success;
 		};
 
-		if (!resources.push_constant_buffers.empty() && layout->gl.push_constants == nullptr)
+		module->gl.push_constant_count = 0;
+		module->gl.push_constants = nullptr;
+
+		// build push constant lookup table for OpenGL, lookup table is stored in VIModule.
+		if (!resources.push_constant_buffers.empty())
 		{
 			spirv_cross::ID id = resources.push_constant_buffers[0].id;
 			spirv_cross::TypeID base_type_id = resources.push_constant_buffers[0].base_type_id;
 			spirv_cross::SmallVector<spirv_cross::BufferRange> ranges = compiler.get_active_buffer_ranges(id);
+			spirv_cross::SPIRType block_type = compiler.get_type(base_type_id);
 			const std::string& instance_name = resources.push_constant_buffers[0].name;
 
-			// build push constant lookup table for OpenGL
-			layout->gl.push_constant_count = (uint32_t)ranges.size();
-			layout->gl.push_constants = new GLPushConstant[ranges.size()];
+
+			// push_constant block name reflection not supported: https://github.com/KhronosGroup/SPIRV-Cross/issues/518
+			VI_ASSERT(!instance_name.empty() && "push_constant block must define an instance name");
+
+			module->gl.push_constant_count = (uint32_t)ranges.size();
+			module->gl.push_constants = new GLPushConstant[ranges.size()];
 
 			for (size_t i = 0; i < ranges.size(); i++)
 			{
 				const spirv_cross::BufferRange& range = ranges[i];
+				const spirv_cross::TypeID member_id = block_type.member_types[range.index];
+				const spirv_cross::SPIRType& member_type = compiler.get_type(member_id);
 				const std::string& member_name = compiler.get_member_name(base_type_id, range.index);
 
-				layout->gl.push_constants[i].offset = range.offset;
-				layout->gl.push_constants[i].size = range.range;
-				layout->gl.push_constants[i].uniform_name = instance_name;
-				layout->gl.push_constants[i].uniform_name.push_back('.');
-				layout->gl.push_constants[i].uniform_name += member_name;
+				VIGLSLType vi_glsl_type;
+				cast_glsl_type(member_type, &vi_glsl_type);
+
+				module->gl.push_constants[i].offset = range.offset;
+				module->gl.push_constants[i].size = range.range;
+				module->gl.push_constants[i].uniform_glsl_type = vi_glsl_type;
+				module->gl.push_constants[i].uniform_name = instance_name;
+				module->gl.push_constants[i].uniform_name.push_back('.');
+				module->gl.push_constants[i].uniform_name += member_name;
+				module->gl.push_constants[i].uniform_arr_size = 1;
+				
+				if (!member_type.array.empty())
+				{
+					VI_ASSERT(member_type.array.size() == 1 && "does not support array of arrays");
+					module->gl.push_constants[i].uniform_arr_size = member_type.array[0];
+				}
 			}
 		}
 
@@ -2705,6 +2739,27 @@ static void cast_glsl_type(VIGLSLType in_type, GLint* out_component_count, GLenu
 	const VIGLSLTypeEntry* entry = vi_glsl_type_table + (int)in_type;
 	*out_component_count = entry->gl_component_count;
 	*out_component_type = entry->gl_component_type;
+}
+
+static void cast_glsl_type(const spirv_cross::SPIRType& in_type, VIGLSLType* out_type)
+{
+	if (in_type.basetype == spirv_cross::SPIRType::Float)
+	{
+		switch (in_type.vecsize)
+		{
+		case 2:
+			*out_type = VI_GLSL_TYPE_VEC2;
+			return;
+		case 3:
+			*out_type = VI_GLSL_TYPE_VEC3;
+			return;
+		case 4:
+			*out_type = VI_GLSL_TYPE_VEC4;
+			return;
+		}
+	}
+
+	VI_UNREACHABLE;
 }
 
 static void cast_pipeline_vertex_input(uint32_t attr_count, VIVertexAttribute* attrs,
@@ -3742,6 +3797,8 @@ VIPipeline vi_create_pipeline(VIDevice device, const VIPipelineInfo* info)
 	pipeline->layout = info->layout;
 	pipeline->vertex_bindings.resize(info->vertex_binding_count);
 	pipeline->vertex_attributes.resize(info->vertex_attribute_count);
+	pipeline->vertex_module = info->vertex_module;
+	pipeline->fragment_module = info->fragment_module;
 
 	for (uint32_t i = 0; i < info->vertex_binding_count; i++)
 		pipeline->vertex_bindings[i] = info->vertex_bindings[i];
@@ -3751,10 +3808,7 @@ VIPipeline vi_create_pipeline(VIDevice device, const VIPipelineInfo* info)
 
 	if (device->backend == VI_BACKEND_OPENGL)
 	{
-		VIModule modules[2];
-		modules[0] = info->vertex_module;
-		modules[1] = info->fragment_module;
-		gl_create_pipeline(device, pipeline, 2, modules);
+		gl_create_pipeline(device, pipeline, info->vertex_module, info->fragment_module);
 		return pipeline;
 	}
 
@@ -3920,6 +3974,7 @@ VIComputePipeline vi_create_compute_pipeline(VIDevice device, const VIComputePip
 	new (pipeline) VIComputePipelineObj();
 	pipeline->device = device;
 	pipeline->layout = info->layout;
+	pipeline->compute_module = info->compute_module;
 
 	if (device->backend == VI_BACKEND_OPENGL)
 	{
@@ -4335,14 +4390,12 @@ void vi_cmd_begin_record(VICommand cmd, VkCommandBufferUsageFlags flags)
 	VK_CHECK(vkBeginCommandBuffer(cmd->vk.handle, &bufferBI));
 
 	// TODO: put in thread safe memory, use VICommandPool for each CPU thread?
-	cmd->device->active_compute_pipeline = VI_NULL_HANDLE;
 	cmd->device->active_pipeline = VI_NULL_HANDLE;
 }
 
 void vi_cmd_end_record(VICommand cmd)
 {
 	// TODO: put in thread safe memory, use VICommandPool for each CPU thread?
-	cmd->device->active_compute_pipeline = VI_NULL_HANDLE;
 	cmd->device->active_pipeline = VI_NULL_HANDLE;
 
 	if (cmd->device->backend == VI_BACKEND_OPENGL)
@@ -4523,8 +4576,6 @@ void vi_cmd_bind_pipeline(VICommand cmd, VIPipeline pipeline)
 
 void vi_cmd_bind_compute_pipeline(VICommand cmd, VIComputePipeline pipeline)
 {
-	cmd->device->active_compute_pipeline = pipeline;
-
 	if (cmd->device->backend == VI_BACKEND_OPENGL)
 	{
 		GLCommand* glcmd = gl_append_command(cmd, GL_COMMAND_TYPE_BIND_COMPUTE_PIPELINE);
@@ -4631,13 +4682,7 @@ void vi_cmd_push_constants(VICommand cmd, VIPipelineLayout layout, uint32_t offs
 	if (cmd->device->backend == VI_BACKEND_OPENGL)
 	{
 		GLCommand* glcmd = gl_append_command(cmd, GL_COMMAND_TYPE_PUSH_CONSTANTS);
-		new (&glcmd->push_constants)GLCommandPushConstants();
-		glcmd->push_constants.size = size;
-		glcmd->push_constants.offset = offset;
-		if (size > VI_ARR_SIZE(glcmd->push_constants.local))
-			glcmd->push_constants.value = (uint8_t*)vi_malloc(size);
-		else
-			glcmd->push_constants.value = glcmd->push_constants.local;
+		new (&glcmd->push_constants)GLCommandPushConstants(offset, size);
 		memcpy(glcmd->push_constants.value, value, size);
 		return;
 	}
