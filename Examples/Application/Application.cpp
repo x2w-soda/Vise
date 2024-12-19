@@ -6,9 +6,13 @@
 #include "stb_image_write.h"
 #include "Application.h"
 
+Application* Application::sInstance = nullptr;
+
 Application::Application(const char* name, VIBackend backend, bool create_visible)
 	: mName(name), mBackend(backend)
 {
+	sInstance = this;
+
 	glfwInit();
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 	glfwWindowHint(GLFW_VISIBLE, create_visible);
@@ -139,6 +143,16 @@ VISetLayout Application::CreateSetLayout(const std::initializer_list<VISetBindin
 	return vi_create_set_layout(mDevice, &info);
 }
 
+VISetPool Application::CreateSetPool(uint32_t max_sets, const std::initializer_list<VISetPoolResource>& list)
+{
+	VISetPoolInfo info;
+	info.max_set_count = max_sets;
+	info.resource_count = list.size();
+	info.resources = list.begin();
+
+	return vi_create_set_pool(mDevice, &info);
+}
+
 VIPipelineLayout Application::CreatePipelineLayout(const std::initializer_list<VISetLayout>& list, uint32_t push_constant_size)
 {
 	VIPipelineLayoutInfo info;
@@ -209,6 +223,34 @@ VkClearValue Application::MakeClearColor(float r, float g, float b, float a)
 	value.color.float32[3] = a;
 
 	return value;
+}
+
+VIImageInfo Application::MakeImageInfo2D(VIFormat format, uint32_t width, uint32_t height, VkMemoryPropertyFlags properties)
+{
+	VIImageInfo imageI;
+	imageI.type = VI_IMAGE_TYPE_2D;
+	imageI.usage = 0;
+	imageI.layers = 1;
+	imageI.format = format;
+	imageI.width = width;
+	imageI.height = height;
+	imageI.properties = properties;
+	imageI.sampler_address_mode = VI_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	imageI.sampler_filter = VI_FILTER_LINEAR;
+
+	return imageI;
+}
+
+VIPassColorAttachment Application::MakePassColorAttachment(VIFormat format, VkAttachmentLoadOp load_op, VkAttachmentStoreOp store_op, VkImageLayout initial_layout, VkImageLayout final_layout)
+{
+	VIPassColorAttachment pass_color_attachment;
+	pass_color_attachment.color_format = format;
+	pass_color_attachment.color_load_op = load_op;
+	pass_color_attachment.color_store_op = store_op;
+	pass_color_attachment.initial_layout = initial_layout;
+	pass_color_attachment.final_layout = final_layout;
+
+	return pass_color_attachment;
 }
 
 VkSubpassDependency Application::MakeSubpassDependency(

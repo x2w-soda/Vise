@@ -112,6 +112,11 @@ public:
 
 	virtual void Run() = 0;
 
+	static Application* Get()
+	{
+		return sInstance;
+	}
+
 protected:
 
 	void NewFrame();
@@ -121,6 +126,9 @@ protected:
 
 	// helper to reduce set layout creation verbosity
 	VISetLayout CreateSetLayout(const std::initializer_list<VISetBinding>& list);
+
+	// helper to reduce set pool creation verbosity
+	VISetPool CreateSetPool(uint32_t max_sets, const std::initializer_list<VISetPoolResource>& list);
 
 	// helper to reduce pipeline layout creation verbosity
 	VIPipelineLayout CreatePipelineLayout(const std::initializer_list<VISetLayout>& list, uint32_t push_constant_size = 0);
@@ -143,6 +151,13 @@ protected:
 	// helper to reduce clear color verbosity
 	VkClearValue MakeClearColor(float r, float g, float b, float a);
 
+	// helper to reduce image creation verbosity
+	VIImageInfo MakeImageInfo2D(VIFormat format, uint32_t width, uint32_t height, VkMemoryPropertyFlags properties);
+
+	// helper to reduce render pass color attachment verbosity
+	VIPassColorAttachment MakePassColorAttachment(VIFormat format, VkAttachmentLoadOp load_op, VkAttachmentStoreOp store_op,
+		VkImageLayout initial_layout, VkImageLayout final_layout);
+
 	// helper to reduce subpass dependency verbosity
 	VkSubpassDependency MakeSubpassDependency(uint32_t src_subpass, VkPipelineStageFlags src_stages, VkAccessFlags src_access,
 		uint32_t dst_subpass, VkPipelineStageFlags dst_stages, VkAccessFlags dst_access);
@@ -164,5 +179,6 @@ protected:
 	Camera mCamera;
 
 private:
+	static Application* sInstance;
 	bool mIsCameraCaptured = false;
 };

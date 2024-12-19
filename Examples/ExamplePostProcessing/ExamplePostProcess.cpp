@@ -192,22 +192,8 @@ ExamplePostProcess::ExamplePostProcess(VIBackend backend)
 	mFMNone = CreateModule(mPipelineLayout, VI_MODULE_TYPE_FRAGMENT_BIT, none_fragment_src);
 
 	VIVertexBinding vertexBinding;
-	vertexBinding.rate = VK_VERTEX_INPUT_RATE_VERTEX;
-	vertexBinding.stride = sizeof(float) * 11;
-
-	std::array<VIVertexAttribute, 4> vertexAttrs;
-	vertexAttrs[0].type = VI_GLSL_TYPE_VEC3; // positions
-	vertexAttrs[0].binding = 0;
-	vertexAttrs[0].offset = 0;
-	vertexAttrs[1].type = VI_GLSL_TYPE_VEC3; // normals
-	vertexAttrs[1].binding = 0;
-	vertexAttrs[1].offset = sizeof(float) * 3;
-	vertexAttrs[2].type = VI_GLSL_TYPE_VEC3; // albedo
-	vertexAttrs[2].binding = 0;
-	vertexAttrs[2].offset = sizeof(float) * 6;
-	vertexAttrs[3].type = VI_GLSL_TYPE_VEC2; // texture UVs
-	vertexAttrs[3].binding = 0;
-	vertexAttrs[3].offset = sizeof(float) * 9;
+	std::vector<VIVertexAttribute> vertexAttrs;
+	MeshVertex::GetBindingAndAttributes(vertexBinding, vertexAttrs);
 
 	VIVertexBinding quadVertexBinding;
 	quadVertexBinding.rate = VK_VERTEX_INPUT_RATE_VERTEX;
