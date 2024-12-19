@@ -147,6 +147,9 @@ protected:
 	VkSubpassDependency MakeSubpassDependency(uint32_t src_subpass, VkPipelineStageFlags src_stages, VkAccessFlags src_access,
 		uint32_t dst_subpass, VkPipelineStageFlags dst_stages, VkAccessFlags dst_access);
 
+	// helper to reduce transfer verbosity
+	VkBufferImageCopy MakeBufferImageCopy2D(VkImageAspectFlags aspect, uint32_t width, uint32_t height);
+
 protected:
 	bool mIsFirstFrame = false;
 	int mFramesInFlight;

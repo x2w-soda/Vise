@@ -17,6 +17,10 @@ public:
 	TestApplication& operator=(const Application&) = delete;
 
 protected:
+
+	void SaveScreenshot(const char* name);
+
+protected:
 	VIPass mScreenshotPass;
 	VIFramebuffer mScreenshotFBO;
 	VIBuffer mScreenshotBuffer;

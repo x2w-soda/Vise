@@ -18,6 +18,8 @@ public:
 
 	virtual void Run() override;
 
+	const char* Filename = nullptr;
+
 private:
 	VIModule mTestVertexIndexVM;
 	VIModule mTestInstanceIndexVM;

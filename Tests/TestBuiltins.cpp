@@ -82,6 +82,7 @@ TestBuiltins::TestBuiltins(VIBackend backend)
 	: TestApplication("TestBuiltins", backend)
 {
 	VIPipelineLayoutInfo layoutI;
+	layoutI.push_constant_size = 0;
 	layoutI.set_layout_count = 0;
 	layoutI.set_layouts = nullptr;
 	mTestPipelineLayout = vi_create_pipeline_layout(mDevice, &layoutI);
@@ -180,16 +181,7 @@ void TestBuiltins::Run()
 	}
 	vi_cmd_end_pass(cmd);
 
-	VkBufferImageCopy region;
-	region.bufferImageHeight = 0;
-	region.bufferOffset = 0;
-	region.bufferRowLength = 0;
-	region.imageExtent = { TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT, 1 };
-	region.imageOffset = { 0, 0, 0 };
-	region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	region.imageSubresource.layerCount = 1;
-	region.imageSubresource.baseArrayLayer = 0;
-	region.imageSubresource.mipLevel = 0;
+	VkBufferImageCopy region = MakeBufferImageCopy2D(VK_IMAGE_ASPECT_COLOR_BIT, TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT);
 	vi_cmd_copy_image_to_buffer(cmd, mScreenshotImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, mScreenshotBuffer, 1, &region);
 	vi_cmd_end_record(cmd);
 
@@ -205,16 +197,5 @@ void TestBuiltins::Run()
 	vi_device_wait_idle(mDevice);
 	vi_free_command(mDevice, cmd);
 
-	// save to disk
-	const char* name = mBackend == VI_BACKEND_VULKAN ? "gl_fragcoord_vk.png" : "gl_fragcoord_gl.png";
-	void* readback;
-	vi_buffer_map(mScreenshotBuffer);
-	readback = vi_buffer_map_read(mScreenshotBuffer, 0, TEST_WINDOW_WIDTH * TEST_WINDOW_HEIGHT * 4);
-	stbi_write_png(name, TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT, 4, readback, TEST_WINDOW_WIDTH * 4);
-	vi_buffer_unmap(mScreenshotBuffer);
-
-	std::filesystem::path local_path(name);
-	std::filesystem::path current_path = std::filesystem::current_path();
-
-	printf("%s saved result to [%s\\%s]\n", mName, current_path.u8string().c_str(), local_path.u8string().c_str());
+	SaveScreenshot(Filename);
 }

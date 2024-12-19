@@ -1,4 +1,7 @@
+#include <filesystem>
 #include "TestApplication.h"
+#include "../Examples/Application/stb_image.h"
+#include "../Examples/Application/stb_image_write.h"
 
 TestApplication::TestApplication(const char* name, VIBackend backend)
 	: Application(name, backend, false)
@@ -67,4 +70,17 @@ TestApplication::~TestApplication()
 	vi_destroy_framebuffer(mDevice, mScreenshotFBO);
 	vi_destroy_image(mDevice, mScreenshotImage);
 	vi_destroy_pass(mDevice, mScreenshotPass);
+}
+
+void TestApplication::SaveScreenshot(const char* name)
+{
+	vi_buffer_map(mScreenshotBuffer);
+	void* readback = vi_buffer_map_read(mScreenshotBuffer, 0, TEST_WINDOW_WIDTH * TEST_WINDOW_HEIGHT * 4);
+	stbi_write_png(name, TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT, 4, readback, TEST_WINDOW_WIDTH * 4);
+	vi_buffer_unmap(mScreenshotBuffer);
+
+	std::filesystem::path local_path(name);
+	std::filesystem::path current_path = std::filesystem::current_path();
+
+	printf("saved screenshot to [%s\\%s]\n", current_path.u8string().c_str(), local_path.u8string().c_str());
 }

@@ -227,6 +227,22 @@ VkSubpassDependency Application::MakeSubpassDependency(
 	return dependency;
 }
 
+VkBufferImageCopy Application::MakeBufferImageCopy2D(VkImageAspectFlags aspect, uint32_t width, uint32_t height)
+{
+	VkBufferImageCopy region;
+	region.bufferImageHeight = 0;
+	region.bufferOffset = 0;
+	region.bufferRowLength = 0;
+	region.imageExtent = { width, height, 1 };
+	region.imageOffset = { 0, 0, 0 };
+	region.imageSubresource.aspectMask = aspect;
+	region.imageSubresource.layerCount = 1;
+	region.imageSubresource.baseArrayLayer = 0;
+	region.imageSubresource.mipLevel = 0;
+
+	return region;
+}
+
 void Application::PrintDeviceLimits(const VIDeviceLimits& limits)
 {
 	printf("== vise device limits (%s):\n", mBackend == VI_BACKEND_VULKAN ? "Vulkan" : "OpenGL");
