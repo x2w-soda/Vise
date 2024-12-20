@@ -350,6 +350,7 @@ struct VIPipelineObj : VIObject
 	std::vector<VIVertexBinding> vertex_bindings;
 	std::vector<VIVertexAttribute> vertex_attributes;
 	VIPipelineLayout layout;
+	VIPipelineBlendStateInfo blend_state;
 	VIModule vertex_module;
 	VIModule fragment_module;
 
@@ -700,10 +701,14 @@ static void cast_filter_vk(VIFilter in_filter, VkFilter* out_filter);
 static void cast_filter_gl(VIFilter in_filter, GLenum* out_filter);
 static void cast_sampler_address_mode_vk(VISamplerAddressMode in_address_mode, VkSamplerAddressMode* out_address_mode);
 static void cast_sampler_address_mode_gl(VISamplerAddressMode in_address_mode, GLenum* out_address_mode);
+static void cast_blend_factor_vk(VIBlendFactor in_factor, VkBlendFactor* out_factor);
+static void cast_blend_factor_gl(VIBlendFactor in_factor, GLenum* out_factor);
+static void cast_blend_op_vk(VIBlendOp in_op, VkBlendOp* out_op);
+static void cast_blend_op_gl(VIBlendOp in_op, GLenum* out_op);
 static void cast_format_vk(VIFormat in_format, VkFormat* out_format, VkImageAspectFlags* out_aspects);
 static void cast_format_vk(VkFormat in_format, VIFormat* out_format);
 static void cast_format_gl(VIFormat in_format, GLenum* out_internal_format, GLenum* out_data_format, GLenum* out_data_type);
-static void cast_set_pool_resources(uint32_t in_res_count, VISetPoolResource* in_res, std::vector<VkDescriptorPoolSize>& out_sizes);
+static void cast_set_pool_resources(uint32_t in_res_count, const VISetPoolResource* in_res, std::vector<VkDescriptorPoolSize>& out_sizes);
 static void cast_set_binding(const VISetBinding* in_binding, VkDescriptorSetLayoutBinding* out_binding);
 static void cast_set_binding_type(VISetBindingType in_type, VkDescriptorType* out_type);
 static void cast_glsl_type(VIGLSLType in_type, VkFormat* out_format);
@@ -777,6 +782,37 @@ static const VISamplerAddressModeEntry vi_sampler_address_mode_table[3] = {
 	{ VI_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,    VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,    GL_CLAMP_TO_EDGE },
 };
 
+struct VIBlendFactorEntry
+{
+	VIBlendFactor vi_blend_factor;
+	VkBlendFactor vk_blend_factor;
+	GLenum gl_blend_factor;
+};
+
+static const VIBlendFactorEntry vi_blend_factor_table[6] = {
+	{ VI_BLEND_FACTOR_ZERO,                VK_BLEND_FACTOR_ZERO,                GL_ZERO },
+	{ VI_BLEND_FACTOR_ONE,                 VK_BLEND_FACTOR_ONE,                 GL_ONE },
+	{ VI_BLEND_FACTOR_SRC_ALPHA,           VK_BLEND_FACTOR_SRC_ALPHA,           GL_SRC_ALPHA },
+	{ VI_BLEND_FACTOR_DST_ALPHA,           VK_BLEND_FACTOR_DST_ALPHA,           GL_DST_ALPHA },
+	{ VI_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA },
+	{ VI_BLEND_FACTOR_ONE_MINUS_DST_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA, GL_ONE_MINUS_DST_ALPHA },
+};
+
+struct VIBlendOpEntry
+{
+	VIBlendOp vi_blend_op;
+	VkBlendOp vk_blend_op;
+	GLenum gl_blend_op;
+};
+
+static const VIBlendOpEntry vi_blend_op_table[5] = {
+	{ VI_BLEND_OP_ADD,              VK_BLEND_OP_ADD,              GL_FUNC_ADD },
+	{ VI_BLEND_OP_SUBTRACT,         VK_BLEND_OP_SUBTRACT,         GL_FUNC_SUBTRACT },
+	{ VI_BLEND_OP_REVERSE_SUBTRACT, VK_BLEND_OP_REVERSE_SUBTRACT, GL_FUNC_REVERSE_SUBTRACT },
+	{ VI_BLEND_OP_MIN,              VK_BLEND_OP_MIN,              GL_MIN },
+	{ VI_BLEND_OP_MAX,              VK_BLEND_OP_MAX,              GL_MAX },
+};
+
 struct VIImageTypeEntry
 {
 	VIImageType vi_type;
@@ -809,10 +845,11 @@ struct VIFormatEntry
 	GLenum gl_data_type;
 };
 
-static const VIFormatEntry vi_format_table[5] = {
+static const VIFormatEntry vi_format_table[6] = {
 	{ VI_FORMAT_UNDEFINED, (VIImageAspectFlags)0,        VK_FORMAT_UNDEFINED,           GL_NONE,              GL_NONE,          GL_NONE },
 	{ VI_FORMAT_RGBA8,    VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R8G8B8A8_UNORM,      GL_RGBA8,             GL_RGBA,          GL_UNSIGNED_BYTE },
 	{ VI_FORMAT_BGRA8,    VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_B8G8R8A8_UNORM,      GL_RGBA8,             GL_BGRA,          GL_UNSIGNED_BYTE },
+	{ VI_FORMAT_RGBA16F,  VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R16G16B16A16_SFLOAT, GL_RGBA16F,           GL_RGBA,          GL_HALF_FLOAT },
 	{ VI_FORMAT_D32F_S8U, VI_IMAGE_ASPECT_DEPTH_STENCIL, VK_FORMAT_D32_SFLOAT_S8_UINT,  GL_DEPTH32F_STENCIL8, GL_DEPTH_STENCIL, GL_FLOAT_32_UNSIGNED_INT_24_8_REV },
 	{ VI_FORMAT_D24_S8U,  VI_IMAGE_ASPECT_DEPTH_STENCIL, VK_FORMAT_D24_UNORM_S8_UINT,   GL_DEPTH24_STENCIL8,  GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, }
 };
@@ -2065,14 +2102,14 @@ static void gl_cmd_execute_bind_pipeline(VIDevice device, GLCommand* glcmd)
 {
 	VI_ASSERT(glcmd->type == GL_COMMAND_TYPE_BIND_PIPELINE);
 
-	device->active_pipeline = glcmd->bind_pipeline;
+	VIPipeline pipeline = device->active_pipeline = glcmd->bind_pipeline;
 
 	// for OpenGL push constants, the lookup table is stored in each module,
 	// if both VM and FM have a lookup table they should be identical.
-	VIModule active_vm = device->active_pipeline->vertex_module;
-	VIModule active_fm = device->active_pipeline->fragment_module;
+	VIModule active_vm = pipeline->vertex_module;
+	VIModule active_fm = pipeline->fragment_module;
 
-	device->gl.active_program = glcmd->bind_pipeline->gl.program;
+	device->gl.active_program = pipeline->gl.program;
 	device->gl.active_module = active_vm;
 	if (active_vm->gl.push_constant_count == 0 && active_fm->gl.push_constant_count > 0)
 		device->gl.active_module = active_fm;
@@ -2085,6 +2122,26 @@ static void gl_cmd_execute_bind_pipeline(VIDevice device, GLCommand* glcmd)
 
 	glBindVertexArray(glcmd->bind_pipeline->gl.vao);
 	glUseProgram(glcmd->bind_pipeline->gl.program);
+
+	// blend states
+	if (pipeline->blend_state.enabled)
+	{
+		glEnable(GL_BLEND);
+
+		GLenum srcColorFactor, dstColorFactor, srcAlphaFactor, dstAlphaFactor;
+		cast_blend_factor_gl(pipeline->blend_state.src_color_factor, &srcColorFactor);
+		cast_blend_factor_gl(pipeline->blend_state.dst_color_factor, &dstColorFactor);
+		cast_blend_factor_gl(pipeline->blend_state.src_alpha_factor, &srcAlphaFactor);
+		cast_blend_factor_gl(pipeline->blend_state.dst_alpha_factor, &dstAlphaFactor);
+		glBlendFuncSeparate(srcColorFactor, dstColorFactor, srcAlphaFactor, dstAlphaFactor);
+		
+		GLenum colorBlendOp, alphaBlendOp;
+		cast_blend_op_gl(pipeline->blend_state.color_blend_op, &colorBlendOp);
+		cast_blend_op_gl(pipeline->blend_state.alpha_blend_op, &alphaBlendOp);
+		glBlendEquationSeparate(colorBlendOp, alphaBlendOp);
+	}
+	else
+		glDisable(GL_BLEND);
 }
 
 void gl_cmd_execute_bind_compute_pipeline(VIDevice device, GLCommand* glcmd)
@@ -2146,6 +2203,7 @@ static void gl_cmd_execute_begin_pass(VIDevice device, GLCommand* glcmd)
 	GLenum clip_origin = flip_gl_clip_origin ? GL_UPPER_LEFT : GL_LOWER_LEFT;
 	glClipControl(clip_origin, GL_ZERO_TO_ONE);
 
+	// TODO: swapchain_framebuffer should not be a special case
 	if (framebuffer == device->swapchain_framebuffers)
 	{
 		VI_ASSERT(color_clear_values.size() == 1);
@@ -2167,15 +2225,21 @@ static void gl_cmd_execute_begin_pass(VIDevice device, GLCommand* glcmd)
 	}
 
 	GLenum clear_bits = 0;
-	VI_ASSERT(color_clear_values.size() == 1);
+	size_t color_attachment_count = pass->color_attachments.size();
+	std::vector<GLenum> draw_buffers(color_attachment_count);
+
+	// TODO: only clear color buffers with VK_ATTACHMENT_LOAD_OP_CLEAR in this pass
+	for (size_t i = 0; i < color_attachment_count; i++)
+		draw_buffers[i] = GL_COLOR_ATTACHMENT0 + i;
+
 	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer->gl.handle);
-	// TODO: clear per color attachment, clear depth stencil only if depth stencil attachment exists && loadopclear
-	GLfloat r = (GLfloat)color_clear_values[0].color.float32[0];
-	GLfloat g = (GLfloat)color_clear_values[0].color.float32[1];
-	GLfloat b = (GLfloat)color_clear_values[0].color.float32[2];
-	GLfloat a = (GLfloat)color_clear_values[0].color.float32[3];
-	glClearColor(r, g, b, a);
-	clear_bits |= GL_COLOR_BUFFER_BIT;
+	glDrawBuffers(draw_buffers.size(), draw_buffers.data());
+
+	if (!color_clear_values.empty())
+	{
+		for (size_t i = 0; i < color_clear_values.size(); i++)
+			glClearBufferfv(GL_COLOR, i, (const GLfloat*)color_clear_values[i].color.float32);
+	}
 
 	if (depth_stencil_clear_value.has_value())
 	{
@@ -2651,6 +2715,26 @@ static void cast_sampler_address_mode_gl(VISamplerAddressMode in_address_mode, G
 	*out_address_mode = vi_sampler_address_mode_table[(int)in_address_mode].gl_address_mode;
 }
 
+static void cast_blend_factor_vk(VIBlendFactor in_factor, VkBlendFactor* out_factor)
+{
+	*out_factor = vi_blend_factor_table[(int)in_factor].vk_blend_factor;
+}
+
+static void cast_blend_factor_gl(VIBlendFactor in_factor, GLenum* out_factor)
+{
+	*out_factor = vi_blend_factor_table[(int)in_factor].gl_blend_factor;
+}
+
+static void cast_blend_op_vk(VIBlendOp in_op, VkBlendOp* out_op)
+{
+	*out_op = vi_blend_op_table[(int)in_op].vk_blend_op;
+}
+
+static void cast_blend_op_gl(VIBlendOp in_op, GLenum* out_op)
+{
+	*out_op = vi_blend_op_table[(int)in_op].gl_blend_op;
+}
+
 static void cast_format_vk(VIFormat in_format, VkFormat* out_format, VkImageAspectFlags* out_aspects)
 {
 	const VIFormatEntry* entry = vi_format_table + (int)in_format;
@@ -2682,7 +2766,7 @@ static void cast_format_gl(VIFormat in_format, GLenum* out_internal_format, GLen
 	*out_data_type = entry->gl_data_type;
 }
 
-static void cast_set_pool_resources(uint32_t in_res_count, VISetPoolResource* in_res, std::vector<VkDescriptorPoolSize>& out_sizes)
+static void cast_set_pool_resources(uint32_t in_res_count, const VISetPoolResource* in_res, std::vector<VkDescriptorPoolSize>& out_sizes)
 {
 	out_sizes.resize(in_res_count);
 
@@ -3792,8 +3876,8 @@ VIPipeline vi_create_pipeline(VIDevice device, const VIPipelineInfo* info)
 {
 	VIPipeline pipeline = (VIPipeline)vi_malloc(sizeof(VIPipelineObj));
 	new (pipeline) VIPipelineObj();
-
 	pipeline->device = device;
+	pipeline->blend_state = info->blend_state;
 	pipeline->layout = info->layout;
 	pipeline->vertex_bindings.resize(info->vertex_binding_count);
 	pipeline->vertex_attributes.resize(info->vertex_attribute_count);
@@ -3815,21 +3899,29 @@ VIPipeline vi_create_pipeline(VIDevice device, const VIPipelineInfo* info)
 	VIVulkan* vk = &device->vk;
 
 	VkPipelineColorBlendAttachmentState blendState{};
-	blendState.blendEnable = VK_FALSE;
-	blendState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-	blendState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-	blendState.colorBlendOp = VK_BLEND_OP_ADD;
-	blendState.srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-	blendState.dstAlphaBlendFactor = VK_BLEND_FACTOR_DST_ALPHA;
-	blendState.alphaBlendOp = VK_BLEND_OP_ADD;
+	blendState.blendEnable = info->blend_state.enabled ? VK_TRUE : VK_FALSE;
 	blendState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	if (blendState.blendEnable)
+	{
+		cast_blend_factor_vk(info->blend_state.src_color_factor, &blendState.srcColorBlendFactor);
+		cast_blend_factor_vk(info->blend_state.dst_color_factor, &blendState.dstColorBlendFactor);
+		cast_blend_factor_vk(info->blend_state.src_alpha_factor, &blendState.srcAlphaBlendFactor);
+		cast_blend_factor_vk(info->blend_state.dst_alpha_factor, &blendState.dstAlphaBlendFactor);
+		cast_blend_op_vk(info->blend_state.color_blend_op, &blendState.colorBlendOp);
+		cast_blend_op_vk(info->blend_state.alpha_blend_op, &blendState.alphaBlendOp);
+	}
+
+	// NOTE: OpenGL does not allow individual blend states for each color attachment,
+	//       here we are using the same blend state for each color attachment in Vulkan.
+	std::vector<VkPipelineColorBlendAttachmentState> blendAttachments(info->pass->color_attachments.size());
+	std::fill(blendAttachments.begin(), blendAttachments.end(), blendState);
 
 	VkPipelineColorBlendStateCreateInfo blendStateCI{};
 	blendStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
 	blendStateCI.logicOpEnable = VK_FALSE;
 	blendStateCI.logicOp = VK_LOGIC_OP_COPY;
-	blendStateCI.attachmentCount = 1;
-	blendStateCI.pAttachments = &blendState;
+	blendStateCI.attachmentCount = blendAttachments.size();
+	blendStateCI.pAttachments = blendAttachments.data();
 	blendStateCI.blendConstants;  // Optional
 
 	// vertex and fragment shader stage

@@ -106,6 +106,7 @@ enum VIFormat
 	VI_FORMAT_UNDEFINED,
 	VI_FORMAT_RGBA8,
 	VI_FORMAT_BGRA8,
+	VI_FORMAT_RGBA16F,
 	VI_FORMAT_D32F_S8U,
 	VI_FORMAT_D24_S8U,
 };
@@ -255,7 +256,7 @@ struct VISetPoolInfo
 {
 	uint32_t max_set_count;
 	uint32_t resource_count;
-	VISetPoolResource* resources;
+	const VISetPoolResource* resources;
 };
 
 struct VISetLayoutInfo
@@ -267,8 +268,8 @@ struct VISetLayoutInfo
 struct VISetUpdateInfo
 {
 	uint32_t binding;
-	VIBuffer buffer = nullptr;
-	VIImage image = nullptr;
+	VIBuffer buffer = VI_NULL_HANDLE;
+	VIImage image = VI_NULL_HANDLE;
 };
 
 struct VIVertexAttribute
@@ -291,6 +292,36 @@ struct VIPipelineLayoutInfo
 	const VISetLayout* set_layouts;
 };
 
+enum VIBlendFactor
+{
+	VI_BLEND_FACTOR_ZERO,
+	VI_BLEND_FACTOR_ONE,
+	VI_BLEND_FACTOR_SRC_ALPHA,
+	VI_BLEND_FACTOR_DST_ALPHA,
+	VI_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+	VI_BLEND_FACTOR_ONE_MINUS_DST_ALPHA,
+};
+
+enum VIBlendOp
+{
+	VI_BLEND_OP_ADD,
+	VI_BLEND_OP_SUBTRACT,
+	VI_BLEND_OP_REVERSE_SUBTRACT,
+	VI_BLEND_OP_MIN,
+	VI_BLEND_OP_MAX,
+};
+
+struct VIPipelineBlendStateInfo
+{
+	bool enabled = false;
+	VIBlendFactor src_color_factor;
+	VIBlendFactor dst_color_factor;
+	VIBlendFactor src_alpha_factor;
+	VIBlendFactor dst_alpha_factor;
+	VIBlendOp color_blend_op;
+	VIBlendOp alpha_blend_op;
+};
+
 struct VIPipelineInfo
 {
 	uint32_t vertex_binding_count;
@@ -298,6 +329,7 @@ struct VIPipelineInfo
 	VIVertexAttribute* vertex_attributes;
 	VIVertexBinding* vertex_bindings;
 	VIPipelineLayout layout;
+	VIPipelineBlendStateInfo blend_state;
 	VIModule vertex_module;
 	VIModule fragment_module;
 	VIPass pass;
