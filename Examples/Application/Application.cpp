@@ -18,11 +18,11 @@ Application::Application(const char* name, VIBackend backend, bool create_visibl
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
 		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-		glfwSwapInterval(1);
 	}
 
 	mWindow = glfwCreateWindow(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT, mName, nullptr, nullptr);
 	glfwMakeContextCurrent(mWindow);
+	glfwSwapInterval(1); // only relevant on OpenGL backend
 
 	std::cout << "application:  " << name << std::endl;
 	std::cout << "current path: " << std::filesystem::current_path() << std::endl;
