@@ -122,7 +122,12 @@ protected:
 	void NewFrame();
 	void CameraUpdate();
 	void CameraToggleCapture();
+	bool CameraIsCaptured();
 	void PrintDeviceLimits(const VIDeviceLimits& limits);
+
+	// example on how to integrate Dear ImGui with both backends of Vise
+	void ImGuiNewFrame();
+	void ImGuiRender(VICommand cmd);
 
 	// helper to reduce set layout creation verbosity
 	VISetLayout CreateSetLayout(const std::initializer_list<VISetBinding>& list);
@@ -177,6 +182,17 @@ protected:
 	VIDeviceLimits mDeviceLimits;
 	VIBackend mBackend;
 	Camera mCamera;
+
+private:
+	void ImGuiOpenGLInit();
+	void ImGuiOpenGLShutdown();
+	void ImGuiOpenGLNewFrame();
+	void ImGuiOpenGLRender();
+
+	void ImGuiVulkanInit();
+	void ImGuiVulkanShutdown();
+	void ImGuiVulkanNewFrame();
+	void ImGuiVulkanRender(VICommand cmd);
 
 private:
 	static Application* sInstance;

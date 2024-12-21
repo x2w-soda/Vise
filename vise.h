@@ -506,6 +506,14 @@ VI_API void vi_cmd_draw(VICommand cmd, const VIDrawInfo* info);
 VI_API void vi_cmd_draw_indexed(VICommand cmd, const VIDrawIndexedInfo* info);
 VI_API void vi_cmd_pipeline_barrier_image_memory(VICommand cmd, VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages, VkDependencyFlags deps, uint32_t barrier_count, VIImageMemoryBarrier* barriers);
 
+VI_API VkInstance vi_device_unwrap_instance(VIDevice device);
+VI_API VkDevice vi_device_unwrap(VIDevice device);
+VI_API VkPhysicalDevice vi_device_unwrap_physical(VIDevice device);
+VI_API VkRenderPass vi_pass_unwrap(VIPass pass);
+VI_API VkSemaphore vi_semaphore_unwrap(VISemaphore semaphore);
+VI_API VkQueue vi_queue_unwrap(VIQueue queue);
+VI_API VkCommandBuffer vi_command_unwrap(VICommand command);
+
 // TODO: this should probably be done by user
 VI_API VIBuffer vi_util_create_buffer_staged(VIDevice device, VIBufferInfo* info, void* data);
 VI_API VIImage vi_util_create_image_staged(VIDevice device, VIImageInfo* info, void* data, VkImageLayout image_layout);

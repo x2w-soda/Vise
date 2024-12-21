@@ -1108,6 +1108,7 @@ static void vk_create_device(VIVulkan* vk, VIDevice device, const VIDeviceInfo* 
 	VK_CHECK(vkCreateDevice(chosen->handle, &deviceCI, NULL, &vk->device));
 
 	vk->pdevice_chosen = chosen;
+	vk->pdevice = vk->pdevice_chosen->handle;
 	vk->family_idx_graphics = family_idx_graphics;
 	vk->family_idx_transfer = family_idx_transfer;
 	vk->family_idx_present = family_idx_present;
@@ -4859,6 +4860,55 @@ void vi_cmd_pipeline_barrier_image_memory(VICommand cmd, VkPipelineStageFlags sr
 		cast_image_memory_barrier(barriers[i], vk_barriers.data() + i);
 
 	vkCmdPipelineBarrier(cmd->vk.handle, src_stages, dst_stages, deps, 0, nullptr, 0, nullptr, vk_barriers.size(), vk_barriers.data());
+}
+
+VkInstance vi_device_unwrap_instance(VIDevice device)
+{
+	VI_ASSERT(device && device->backend == VI_BACKEND_VULKAN);
+
+	return device->vk.instance;
+}
+
+VkDevice vi_device_unwrap(VIDevice device)
+{
+	VI_ASSERT(device && device->backend == VI_BACKEND_VULKAN);
+
+	return device->vk.device;
+}
+
+VkPhysicalDevice vi_device_unwrap_physical(VIDevice device)
+{
+	VI_ASSERT(device && device->backend == VI_BACKEND_VULKAN);
+
+	return device->vk.pdevice;
+}
+
+VkRenderPass vi_pass_unwrap(VIPass pass)
+{
+	VI_ASSERT(pass && pass->device->backend == VI_BACKEND_VULKAN);
+
+	return pass->vk.handle;
+}
+
+VkSemaphore vi_semaphore_unwrap(VISemaphore semaphore)
+{
+	VI_ASSERT(semaphore && semaphore->device->backend == VI_BACKEND_VULKAN);
+
+	return semaphore->vk_handle;
+}
+
+VkQueue vi_queue_unwrap(VIQueue queue)
+{
+	VI_ASSERT(queue && queue->device->backend == VI_BACKEND_VULKAN);
+
+	return queue->vk_handle;
+}
+
+VkCommandBuffer vi_command_unwrap(VICommand command)
+{
+	VI_ASSERT(command && command->device->backend == VI_BACKEND_VULKAN);
+
+	return command->vk.handle;
 }
 
 

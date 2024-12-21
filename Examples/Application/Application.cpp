@@ -1,5 +1,9 @@
 #include <iostream>
 #include <filesystem>
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_opengl3.h>
+#include <imgui_impl_vulkan.h>
 #include "Application.h"
 
 Application* Application::sInstance = nullptr;
@@ -35,9 +39,15 @@ Application::Application(const char* name, VIBackend backend, bool create_visibl
 	deviceI.vulkan.enable_validation_layers = true; // TODO: disable in release build
 
 	if (backend == VI_BACKEND_VULKAN)
+	{
 		mDevice = vi_create_device_vk(&deviceI, &mDeviceLimits);
+		ImGuiVulkanInit();
+	}
 	else
+	{
 		mDevice = vi_create_device_gl(&deviceI, &mDeviceLimits);
+		ImGuiOpenGLInit();
+	}
 
 	// the actual hardware supported frames in flight may be different from what we asked for.
 	mFramesInFlight = mDeviceLimits.swapchain_framebuffer_count;
@@ -45,6 +55,11 @@ Application::Application(const char* name, VIBackend backend, bool create_visibl
 
 Application::~Application()
 {
+	if (mBackend == VI_BACKEND_VULKAN)
+		ImGuiVulkanShutdown();
+	else
+		ImGuiOpenGLShutdown();
+
 	vi_destroy_device(mDevice);
 
 	glfwDestroyWindow(mWindow);
@@ -62,8 +77,6 @@ void Application::NewFrame()
 	mFrameTimeThisFrame = glfwGetTime();
 	mFrameTimeDelta = mFrameTimeThisFrame - mFrameTimePrevFrame;
 	mFrameTimePrevFrame = mFrameTimeThisFrame;
-
-	//mFrameIndex = (mFrameIndex + 1) % APP_DESIRED_FRAMES_IN_FLIGHT;
 
 	glfwPollEvents();
 }
@@ -129,6 +142,99 @@ void Application::CameraToggleCapture()
 	}
 }
 
+bool Application::CameraIsCaptured()
+{
+	return mIsCameraCaptured;
+}
+
+void Application::ImGuiNewFrame()
+{
+	if (mBackend == VI_BACKEND_OPENGL)
+		ImGuiOpenGLNewFrame();
+	else
+		ImGuiVulkanNewFrame();
+}
+
+void Application::ImGuiRender(VICommand cmd)
+{
+	if (mBackend == VI_BACKEND_OPENGL)
+		ImGuiOpenGLRender();
+	else
+		ImGuiVulkanRender(cmd);
+}
+
+void Application::ImGuiOpenGLInit()
+{
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGui::StyleColorsDark();
+	ImGui_ImplGlfw_InitForOpenGL(mWindow, true);
+	ImGui_ImplOpenGL3_Init("#version 460");
+}
+
+void Application::ImGuiOpenGLShutdown()
+{
+	ImGui_ImplOpenGL3_Shutdown();
+	ImGui_ImplGlfw_Shutdown();
+	ImGui::DestroyContext();
+}
+
+void Application::ImGuiOpenGLNewFrame()
+{
+	ImGui_ImplOpenGL3_NewFrame();
+	ImGui_ImplGlfw_NewFrame();
+	ImGui::NewFrame();
+}
+
+void Application::ImGuiOpenGLRender()
+{
+	ImGui::Render();
+	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+}
+
+void Application::ImGuiVulkanInit()
+{
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGui::StyleColorsDark();
+	ImGui_ImplGlfw_InitForVulkan(mWindow, true);
+
+	ImGui_ImplVulkan_InitInfo initI{};
+	initI.Instance = vi_device_unwrap_instance(mDevice);
+	initI.PhysicalDevice = vi_device_unwrap_physical(mDevice);
+	initI.Device = vi_device_unwrap(mDevice);
+	initI.QueueFamily = vi_device_get_graphics_family_index(mDevice);
+	initI.Queue = vi_queue_unwrap(vi_device_get_graphics_queue(mDevice));
+	initI.PipelineCache = VK_NULL_HANDLE;
+	initI.DescriptorPool = VK_NULL_HANDLE;
+	initI.DescriptorPoolSize = 1;
+	initI.Allocator = nullptr;
+	initI.MinImageCount = mDeviceLimits.swapchain_framebuffer_count;
+	initI.ImageCount = mDeviceLimits.swapchain_framebuffer_count;
+	initI.CheckVkResultFn = nullptr;
+	initI.RenderPass = vi_pass_unwrap(vi_device_get_swapchain_pass(mDevice));
+	ImGui_ImplVulkan_Init(&initI);
+}
+
+void Application::ImGuiVulkanShutdown()
+{
+	ImGui_ImplVulkan_Shutdown();
+	ImGui_ImplGlfw_Shutdown();
+	ImGui::DestroyContext();
+}
+
+void Application::ImGuiVulkanNewFrame()
+{
+	ImGui_ImplVulkan_NewFrame();
+	ImGui_ImplGlfw_NewFrame();
+	ImGui::NewFrame();
+}
+
+void Application::ImGuiVulkanRender(VICommand cmd)
+{
+	ImGui::Render();
+	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), vi_command_unwrap(cmd));
+}
 
 VISetLayout Application::CreateSetLayout(const std::initializer_list<VISetBinding>& list)
 {
