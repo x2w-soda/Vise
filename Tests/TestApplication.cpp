@@ -1,7 +1,7 @@
 #include <filesystem>
+#include <stb_image.h>
+#include <stb_image_write.h>
 #include "TestApplication.h"
-#include "../Examples/Application/stb_image.h"
-#include "../Examples/Application/stb_image_write.h"
 
 TestApplication::TestApplication(const char* name, VIBackend backend)
 	: Application(name, backend, false)

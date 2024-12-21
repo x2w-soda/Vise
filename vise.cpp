@@ -1,18 +1,20 @@
-#include <vise.h>
-
+#include <limits>
 #include <iostream>
 #include <vector>
 #include <optional>
-#include <limits>
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstdint>
-#include <glad/glad.h>
 
 #include <glslang/Public/ResourceLimits.h>
 #include <glslang/SPIRV/GlslangToSpv.h>
+#include <spirv_cross/spirv_cross.hpp>
 #include <spirv_cross/spirv_glsl.hpp>
+
+#include <vise.h>
+#include <volk.h>
+#include <glad/glad.h>
 
 #ifndef VI_BUILD_RELEASE
 # define VI_BUILD_DEBUG
@@ -25,14 +27,12 @@
  #define GLFW_EXPOSE_NATIVE_WIN32
  #include <GLFW/glfw3.h>
  #include <GLFW/glfw3native.h>
- #include <Windows.h>
 #else
 # include <GLFW/glfw3.h>
 #endif
 
 #ifdef VI_BUILD_DEBUG
 # ifdef VI_PLATFORM_WIN32
-#  include <Windows.h>
 #  include <debugapi.h>
 #  define VI_DEBUG_BREAK   DebugBreak()
 # endif
@@ -89,6 +89,7 @@
 #define VI_ARR_SIZE(ARR) (sizeof(ARR) / sizeof(*ARR))
 
 #define VI_VK_API_VERSION             VK_API_VERSION_1_2
+#define VI_VK_GLSLANG_VERSION         glslang::EShTargetVulkan_1_2
 #define VI_SHADER_GLSL_VERSION        460
 #define VI_SHADER_ENTRY_POINT         "main"
 #define VI_GL_COMMAND_LIST_CAPACITY   16
@@ -2302,7 +2303,7 @@ static bool compile_vk(const char* src, std::vector<char>& byte_code, EShLanguag
 	shader_tmp.setStrings(&src, 1);
 
 	EShMessages messages = EShMsgDefault;
-	glslang::EshTargetClientVersion client_version = glslang::EShTargetVulkan_1_3;
+	glslang::EshTargetClientVersion client_version = VI_VK_GLSLANG_VERSION;
 	glslang::EShTargetLanguageVersion lang_version = glslang::EShTargetSpv_1_0;
 	const TBuiltInResource* resources = ::GetDefaultResources();
 

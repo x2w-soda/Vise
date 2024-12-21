@@ -1,7 +1,5 @@
 #include <array>
 #include "ExamplePostProcess.h"
-//#include "../Layouts.h"
-#include "../Application/stb_image.h"
 
 static char render_vertex_src[] = R"(
 #version 460

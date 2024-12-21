@@ -8,8 +8,11 @@
 # error "vise unsupported platform"
 #endif
 
-#include <volk.h>
 #include <vector>
+
+// Vise uses some Vulkan structs and uses Volk as meta loader.
+// Make sure Extern/volk directory is in your include path.
+#include <volk.h>
 
 #ifndef VI_API
 #define VI_API extern

@@ -1,10 +1,10 @@
 #include <array>
 #include <vise.h>
+#include <stb_image.h>
+#include <stb_image_write.h>
 #include "TestBuiltins.h"
 #include "TestPushConstants.h"
 #include "../Examples/Application/Application.h"
-#include "../Examples/Application/stb_image.h"
-#include "../Examples/Application/stb_image_write.h"
 
 #define TEST_MSE_THRESHOLD 0.01
 

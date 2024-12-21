@@ -1,7 +1,5 @@
 #include <filesystem>
 #include "TestBuiltins.h"
-#include "../Examples/Application/stb_image.h"
-#include "../Examples/Application/stb_image_write.h"
 
 // test vertex pulling with gl_VertexIndex from 2 to 7
 const char test_gl_VertexIndex_src[] = R"(

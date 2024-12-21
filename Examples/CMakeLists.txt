@@ -8,18 +8,24 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glm)
 
+add_library(stb STATIC
+	${CMAKE_CURRENT_SOURCE_DIR}/../Extern/stb/stb.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/../Extern/stb/stb_image.h
+	${CMAKE_CURRENT_SOURCE_DIR}/../Extern/stb/stb_image_write.h
+)
+
 # example application framework to use Vise
 # - uses GLFW as window backend
 
 add_library(vise_application
-	Application/Application.h
-	Application/Application.cpp
-	Application/Model.h
-	Application/Model.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/Application/Application.h
+	${CMAKE_CURRENT_SOURCE_DIR}/Application/Application.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/Application/Model.h
+	${CMAKE_CURRENT_SOURCE_DIR}/Application/Model.cpp
 )
 
 target_include_directories(vise_application PRIVATE ${VISE_INCLUDE_DIRS} ${glm_SOURCE_DIR})
-target_link_libraries(vise_application PRIVATE vise glfw)
+target_link_libraries(vise_application PRIVATE vise stb glfw)
 
 # build examples
 

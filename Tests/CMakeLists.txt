@@ -8,6 +8,6 @@ add_executable(vise_tests
 	TestBuiltins.cpp
 )
 
-target_include_directories(vise_tests PRIVATE ${VISE_INCLUDE_DIRS} ${glm_SOURCE_DIR})
+target_include_directories(vise_tests PRIVATE ${VISE_INCLUDE_DIRS} ${glm_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/Extern/stb)
 target_link_directories(vise_tests PRIVATE ${VISE_LINK_DIRS})
-target_link_libraries(vise_tests PRIVATE ${VISE_VULKAN_SDK_LIBS} vise vise_application glfw)
+target_link_libraries(vise_tests PRIVATE ${VISE_VULKAN_SDK_LIBS} vise vise_application glfw stb)

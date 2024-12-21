@@ -1,7 +1,5 @@
 #include <filesystem>
 #include "TestPushConstants.h"
-#include "../Examples/Application/stb_image.h"
-#include "../Examples/Application/stb_image_write.h"
 
 
 const char test_vertex_src1[] =  R"(
