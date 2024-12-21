@@ -14,12 +14,6 @@ public:
 	void Run() override;
 
 private:
-
-	static ExamplePostProcess* Get()
-	{
-		return sInstance;
-	}
-
 	static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
 
 private:
@@ -35,7 +29,10 @@ private:
 		VICommand cmd;
 	};
 
-	static ExamplePostProcess* sInstance;
+	struct Config
+	{
+		VIPipeline postprocess_pipeline;
+	} mConfig;
 
 	std::vector<FrameData> mFrames;
 	std::vector<std::shared_ptr<Mesh>> mMeshes;
@@ -51,5 +48,4 @@ private:
 	VIPipeline mPipelineNone, mPipelineGrayscale, mPipelineInvert;
 	VIBuffer mQuadVBO;
 	VIBuffer mQuadIBO;
-	int mPostProcessPipelineIndex = 1;
 };

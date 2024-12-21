@@ -1,4 +1,5 @@
 #include <array>
+#include <imgui.h>
 #include "ExamplePostProcess.h"
 
 static char render_vertex_src[] = R"(
@@ -16,8 +17,6 @@ layout (set = 0, binding = 0) uniform uFrameUBO
 {
 	mat4 view;
 	mat4 proj;
-	vec4 camera_pos;
-	vec2 fb_size;
 } FrameUBO;
 
 void main()
@@ -73,7 +72,6 @@ layout (set = 0, binding = 1) uniform sampler2D uScene;
 void main()
 {
 	fColor = vec4(texture(uScene, vTextureUV).rgb, 1.0);
-	//fColor = vec4(texelFetch(uScene, ivec2(gl_FragCoord.xy), 0).rgb, 1.0);
 }
 )";
 
@@ -112,13 +110,9 @@ struct FrameUBO
 	glm::mat4 ProjMat;
 };
 
-ExamplePostProcess* ExamplePostProcess::sInstance = nullptr;
-
 ExamplePostProcess::ExamplePostProcess(VIBackend backend)
 	: Application("Post Processing", backend)
 {
-	sInstance = this;
-
 	glfwSetKeyCallback(mWindow, &ExamplePostProcess::KeyCallback);
 
 	VIPass pass = vi_device_get_swapchain_pass(mDevice);
@@ -352,11 +346,26 @@ ExamplePostProcess::~ExamplePostProcess()
 void ExamplePostProcess::Run()
 {
 	mCamera.SetPosition({ -5.0f, 1.0f, 0.0f });
+	mConfig.postprocess_pipeline = mPipelineNone;
 
 	while (!glfwWindowShouldClose(mWindow))
 	{
 		Application::NewFrame();
+		Application::ImGuiNewFrame();
 		Application::CameraUpdate();
+
+		if (!CameraIsCaptured())
+		{
+			ImGui::Begin(mName);
+			ImGui::Text("Select a postprocess pipeline:");
+			if (ImGui::Button("No Effect"))
+				mConfig.postprocess_pipeline = mPipelineNone;
+			if (ImGui::Button("Grayscale"))
+				mConfig.postprocess_pipeline = mPipelineGrayscale;
+			if (ImGui::Button("Invert"))
+				mConfig.postprocess_pipeline = mPipelineInvert;
+			ImGui::End();
+		}
 
 		VISemaphore image_acquired;
 		VISemaphore present_ready;
@@ -413,15 +422,7 @@ void ExamplePostProcess::Run()
 		beginI.depth_stencil_clear_value = &clear_depth;
 		vi_cmd_begin_pass(frame->cmd, &beginI);
 		{
-			VIPipeline pipeline;
-			if (mPostProcessPipelineIndex == 2)
-				pipeline = mPipelineGrayscale;
-			else if (mPostProcessPipelineIndex == 3)
-				pipeline = mPipelineInvert;
-			else
-				pipeline = mPipelineNone;
-
-			vi_cmd_bind_pipeline(frame->cmd, pipeline);
+			vi_cmd_bind_pipeline(frame->cmd, mConfig.postprocess_pipeline);
 			vi_cmd_set_viewport(frame->cmd, MakeViewport(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT));
 			vi_cmd_set_scissor(frame->cmd, MakeScissor(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT));
 
@@ -435,6 +436,8 @@ void ExamplePostProcess::Run()
 			info.instance_count = 1;
 			info.instance_start = 0;
 			vi_cmd_draw_indexed(frame->cmd, &info);
+
+			Application::ImGuiRender(frame->cmd);
 		}
 		vi_cmd_end_pass(frame->cmd);
 		vi_cmd_end_record(frame->cmd);
@@ -458,7 +461,7 @@ void ExamplePostProcess::Run()
 
 void ExamplePostProcess::KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
-	ExamplePostProcess* example = ExamplePostProcess::Get();
+	ExamplePostProcess* example = (ExamplePostProcess*)Application::Get();
 
 	if (action != GLFW_PRESS)
 		return;
@@ -467,11 +470,6 @@ void ExamplePostProcess::KeyCallback(GLFWwindow* window, int key, int scancode, 
 	{
 	case GLFW_KEY_ESCAPE:
 		example->CameraToggleCapture();
-		break;
-	case GLFW_KEY_1:
-	case GLFW_KEY_2:
-	case GLFW_KEY_3:
-		example->mPostProcessPipelineIndex = key - GLFW_KEY_0;
 		break;
 	default:
 		break;
