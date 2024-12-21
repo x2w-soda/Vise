@@ -72,7 +72,7 @@ set(VISE_INCLUDE_DIRS
   ${CMAKE_CURRENT_SOURCE_DIR}/Extern/glad
   ${CMAKE_CURRENT_SOURCE_DIR}/Extern/volk
   ${Vulkan_INCLUDE_DIR}
-  ${GLFW_SOURCE_DIR}/include
+  ${glfw_SOURCE_DIR}/include
   ${vma_SOURCE_DIR}/include
 )
 
