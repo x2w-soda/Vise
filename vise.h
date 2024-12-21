@@ -86,6 +86,7 @@ enum VIGLSLType
 	VI_GLSL_TYPE_VEC2,
 	VI_GLSL_TYPE_VEC3,
 	VI_GLSL_TYPE_VEC4,
+	VI_GLSL_TYPE_UINT,
 };
 
 enum VIBufferType
@@ -485,6 +486,7 @@ VI_API void vi_buffer_unmap(VIBuffer buffer);
 VI_API void vi_reset_command(VICommand cmd);
 VI_API void vi_cmd_begin_record(VICommand cmd, VkCommandBufferUsageFlags flags);
 VI_API void vi_cmd_end_record(VICommand cmd);
+VI_API void vi_cmd_opengl_callback(VICommand cmd, void (*callback)(void* data), void* data);
 VI_API void vi_cmd_copy_buffer(VICommand cmd, VIBuffer src, VIBuffer dst, uint32_t region_count, VkBufferCopy* regions);
 VI_API void vi_cmd_copy_buffer_to_image(VICommand cmd, VIBuffer buffer, VIImage image, VkImageLayout layout, uint32_t region_count, VkBufferImageCopy* regions);
 VI_API void vi_cmd_copy_image_to_buffer(VICommand cmd, VIImage image, VkImageLayout layout, VIBuffer buffer, uint32_t region_count, VkBufferImageCopy* regions);

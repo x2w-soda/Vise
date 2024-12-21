@@ -187,7 +187,7 @@ private:
 	void ImGuiOpenGLInit();
 	void ImGuiOpenGLShutdown();
 	void ImGuiOpenGLNewFrame();
-	void ImGuiOpenGLRender();
+	void ImGuiOpenGLRender(VICommand cmd);
 
 	void ImGuiVulkanInit();
 	void ImGuiVulkanShutdown();

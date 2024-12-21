@@ -483,7 +483,8 @@ struct VIVulkan
 
 enum GLCommandType
 {
-	GL_COMMAND_TYPE_SET_VIEWPORT = 0,
+	GL_COMMAND_TYPE_OPENGL_CALLBACK = 0,
+	GL_COMMAND_TYPE_SET_VIEWPORT,
 	GL_COMMAND_TYPE_SET_SCISSOR,
 	GL_COMMAND_TYPE_DRAW,
 	GL_COMMAND_TYPE_DRAW_INDEXED,
@@ -498,6 +499,12 @@ enum GLCommandType
 	GL_COMMAND_TYPE_COPY_IMAGE_TO_BUFFER,
 	GL_COMMAND_TYPE_DISPATCH,
 	GL_COMMAND_TYPE_ENUM_COUNT,
+};
+
+struct GLCommandOpenGLCallback
+{
+	void* data;
+	void (*callback)(void* data);
 };
 
 struct GLCommandPushConstants
@@ -572,6 +579,7 @@ struct GLCommand
 
 	union
 	{
+		GLCommandOpenGLCallback opengl_callback;
 		VkViewport set_viewport;
 		VkRect2D set_scissor;
 		VIDrawInfo draw;
@@ -669,6 +677,7 @@ static void gl_pipeline_layout_get_remapped_binding(VIPipelineLayout layout, uin
 static GLCommand* gl_append_command(VICommand cmd, GLCommandType type);
 static void gl_reset_command(VIDevice device, VICommand cmd);
 static void gl_cmd_execute(VIDevice device, VICommand cmd);
+static void gl_cmd_execute_opengl_callback(VIDevice device, GLCommand* glcmd);
 static void gl_cmd_execute_set_viewport(VIDevice device, GLCommand* glcmd);
 static void gl_cmd_execute_set_scissor(VIDevice device, GLCommand* glcmd);
 static void gl_cmd_execute_draw(VIDevice device, GLCommand* glcmd);
@@ -729,6 +738,7 @@ static size_t host_malloc_usage;
 static size_t host_malloc_peak;
 
 static void (*gl_cmd_execute_table[GL_COMMAND_TYPE_ENUM_COUNT])(VIDevice, GLCommand*) = {
+	gl_cmd_execute_opengl_callback,
 	gl_cmd_execute_set_viewport,
 	gl_cmd_execute_set_scissor,
 	gl_cmd_execute_draw,
@@ -753,10 +763,11 @@ struct VIGLSLTypeEntry
 	GLenum gl_component_type;
 };
 
-static const VIGLSLTypeEntry vi_glsl_type_table[3] = {
+static const VIGLSLTypeEntry vi_glsl_type_table[4] = {
 	{ VI_GLSL_TYPE_VEC2, VK_FORMAT_R32G32_SFLOAT,       2, GL_FLOAT },
 	{ VI_GLSL_TYPE_VEC3, VK_FORMAT_R32G32B32_SFLOAT,    3, GL_FLOAT },
 	{ VI_GLSL_TYPE_VEC4, VK_FORMAT_R32G32B32A32_SFLOAT, 4, GL_FLOAT },
+	{ VI_GLSL_TYPE_UINT, VK_FORMAT_R32_UINT,            1, GL_UNSIGNED_INT },
 };
 
 struct VISamplerFilterEntry
@@ -1947,6 +1958,16 @@ static void gl_cmd_execute(VIDevice device, VICommand cmd)
 	}
 }
 
+static void gl_cmd_execute_opengl_callback(VIDevice device, GLCommand* glcmd)
+{
+	VI_ASSERT(glcmd->type == GL_COMMAND_TYPE_OPENGL_CALLBACK);
+
+	void* data = glcmd->opengl_callback.data;
+
+	if (glcmd->opengl_callback.callback)
+		glcmd->opengl_callback.callback(data);
+}
+
 static void gl_cmd_execute_set_viewport(VIDevice device, GLCommand* glcmd)
 {
 	VI_ASSERT(glcmd->type == GL_COMMAND_TYPE_SET_VIEWPORT);
@@ -2037,6 +2058,9 @@ static void gl_cmd_execute_push_constants(VIDevice device, GLCommand* glcmd)
 			{
 			case VI_GLSL_TYPE_VEC4:
 				glUniform4fv(pc_loc, pc->uniform_arr_size, (const GLfloat*)value_base);
+				break;
+			case VI_GLSL_TYPE_UINT:
+				glUniform1uiv(pc_loc, pc->uniform_arr_size, (const GLuint*)value_base);
 				break;
 			default:
 				VI_UNREACHABLE;
@@ -2844,6 +2868,11 @@ static void cast_glsl_type(const spirv_cross::SPIRType& in_type, VIGLSLType* out
 			*out_type = VI_GLSL_TYPE_VEC4;
 			return;
 		}
+	}
+	else if (in_type.basetype == spirv_cross::SPIRType::UInt)
+	{
+		*out_type = VI_GLSL_TYPE_UINT;
+		return;
 	}
 
 	VI_UNREACHABLE;
@@ -4497,6 +4526,16 @@ void vi_cmd_end_record(VICommand cmd)
 		return;
 
 	VK_CHECK(vkEndCommandBuffer(cmd->vk.handle));
+}
+
+void vi_cmd_opengl_callback(VICommand cmd, void (*callback)(void* data), void* data)
+{
+	if (cmd->device->backend == VI_BACKEND_VULKAN)
+		return;
+
+	GLCommand* glcmd = gl_append_command(cmd, GL_COMMAND_TYPE_OPENGL_CALLBACK);
+	glcmd->opengl_callback.callback = callback;
+	glcmd->opengl_callback.data = data;
 }
 
 void vi_cmd_copy_buffer(VICommand cmd, VIBuffer src, VIBuffer dst, uint32_t region_count, VkBufferCopy* regions)

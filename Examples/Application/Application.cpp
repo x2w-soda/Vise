@@ -158,7 +158,7 @@ void Application::ImGuiNewFrame()
 void Application::ImGuiRender(VICommand cmd)
 {
 	if (mBackend == VI_BACKEND_OPENGL)
-		ImGuiOpenGLRender();
+		ImGuiOpenGLRender(cmd);
 	else
 		ImGuiVulkanRender(cmd);
 }
@@ -186,10 +186,12 @@ void Application::ImGuiOpenGLNewFrame()
 	ImGui::NewFrame();
 }
 
-void Application::ImGuiOpenGLRender()
+void Application::ImGuiOpenGLRender(VICommand cmd)
 {
-	ImGui::Render();
-	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+	vi_cmd_opengl_callback(cmd, [](void* data) {
+		ImGui::Render();
+		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+	}, nullptr);
 }
 
 void Application::ImGuiVulkanInit()
