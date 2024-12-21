@@ -2412,29 +2412,30 @@ static bool compile_gl(VIModule module, VIPipelineLayout layout, const char* src
 		{
 			spirv_cross::ID id = resources.push_constant_buffers[0].id;
 			spirv_cross::TypeID base_type_id = resources.push_constant_buffers[0].base_type_id;
-			spirv_cross::SmallVector<spirv_cross::BufferRange> ranges = compiler.get_active_buffer_ranges(id);
 			spirv_cross::SPIRType block_type = compiler.get_type(base_type_id);
 			const std::string& instance_name = resources.push_constant_buffers[0].name;
-
 
 			// push_constant block name reflection not supported: https://github.com/KhronosGroup/SPIRV-Cross/issues/518
 			VI_ASSERT(!instance_name.empty() && "push_constant block must define an instance name");
 
-			module->gl.push_constant_count = (uint32_t)ranges.size();
-			module->gl.push_constants = new GLPushConstant[ranges.size()];
+			// each member in push_constant block is an OpenGL uniform
+			uint32_t push_constant_count = (uint32_t)block_type.member_types.size();
 
-			for (size_t i = 0; i < ranges.size(); i++)
+			module->gl.push_constant_count = push_constant_count;
+			module->gl.push_constants = new GLPushConstant[push_constant_count];
+
+			for (size_t i = 0; i < push_constant_count; i++)
 			{
-				const spirv_cross::BufferRange& range = ranges[i];
-				const spirv_cross::TypeID member_id = block_type.member_types[range.index];
-				const spirv_cross::SPIRType& member_type = compiler.get_type(member_id);
-				const std::string& member_name = compiler.get_member_name(base_type_id, range.index);
+				const spirv_cross::SPIRType& member_type = compiler.get_type(block_type.member_types[i]);
+				const std::string& member_name = compiler.get_member_name(base_type_id, i);
+				uint32_t member_offset = (uint32_t)compiler.type_struct_member_offset(block_type, i);
+				uint32_t member_size = (uint32_t)compiler.get_declared_struct_member_size(block_type, i);
 
 				VIGLSLType vi_glsl_type;
 				cast_glsl_type(member_type, &vi_glsl_type);
 
-				module->gl.push_constants[i].offset = range.offset;
-				module->gl.push_constants[i].size = range.range;
+				module->gl.push_constants[i].offset = member_offset;
+				module->gl.push_constants[i].size = member_size;
 				module->gl.push_constants[i].uniform_glsl_type = vi_glsl_type;
 				module->gl.push_constants[i].uniform_name = instance_name;
 				module->gl.push_constants[i].uniform_name.push_back('.');
