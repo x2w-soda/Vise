@@ -4,6 +4,7 @@
 #include <stb_image_write.h>
 #include "TestBuiltins.h"
 #include "TestPushConstants.h"
+#include "TestPipelineBlend.h"
 #include "../Examples/Application/Application.h"
 
 #define TEST_MSE_THRESHOLD 0.01
@@ -260,12 +261,23 @@ int main(int argc, char** argv)
 		test_push_constants.Filename = "push_constant_gl.png";
 		test_push_constants.Run();
 	}
+	{
+		TestPipelineBlend test_pipeline_blend(VI_BACKEND_VULKAN);
+		test_pipeline_blend.Filename = "pipeline_blend_vk.png";
+		test_pipeline_blend.Run();
+	}
+	{
+		TestPipelineBlend test_pipeline_blend(VI_BACKEND_OPENGL);
+		test_pipeline_blend.Filename = "pipeline_blend_gl.png";
+		test_pipeline_blend.Run();
+	}
 
 	// the MSE test driver can be done in either backend
 	// NOTE: without golden images, it is possible that both backends are incorrect but identical renders
 	TestDriver testDriver(VI_BACKEND_VULKAN);
 	testDriver.AddMSETest("glsl_builtins_vk.png", "glsl_builtins_gl.png");
 	testDriver.AddMSETest("push_constant_vk.png", "push_constant_gl.png");
+	testDriver.AddMSETest("pipeline_blend_vk.png", "pipeline_blend_gl.png");
 	testDriver.Run();
 
 	return 0;

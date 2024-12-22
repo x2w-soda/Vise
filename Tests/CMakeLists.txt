@@ -6,6 +6,8 @@ add_executable(vise_tests
 	TestPushConstants.cpp
 	TestBuiltins.h
 	TestBuiltins.cpp
+	TestPipelineBlend.h
+	TestPipelineBlend.cpp
 )
 
 target_include_directories(vise_tests PRIVATE ${VISE_INCLUDE_DIRS} ${glm_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/Extern/stb)
