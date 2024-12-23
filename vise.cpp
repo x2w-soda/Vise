@@ -4503,7 +4503,10 @@ void vi_reset_command(VICommand cmd)
 void vi_cmd_begin_record(VICommand cmd, VkCommandBufferUsageFlags flags)
 {
 	if (cmd->device->backend == VI_BACKEND_OPENGL)
+	{
+		gl_reset_command(cmd->device, cmd);
 		return;
+	}
 
 	VkCommandBufferBeginInfo bufferBI;
 	bufferBI.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
