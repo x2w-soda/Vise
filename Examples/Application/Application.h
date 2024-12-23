@@ -128,6 +128,8 @@ protected:
 	// example on how to integrate Dear ImGui with both backends of Vise
 	void ImGuiNewFrame();
 	void ImGuiRender(VICommand cmd);
+	uint64_t ImGuiAddImage(VIImage image, VkImageLayout image_layout);
+	void ImGuiRemoveImage(uint64_t imgui_image);
 
 	// helper to reduce set layout creation verbosity
 	VISetLayout CreateSetLayout(const std::initializer_list<VISetBinding>& list);

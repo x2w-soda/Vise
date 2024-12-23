@@ -515,6 +515,11 @@ VI_API VkRenderPass vi_pass_unwrap(VIPass pass);
 VI_API VkSemaphore vi_semaphore_unwrap(VISemaphore semaphore);
 VI_API VkQueue vi_queue_unwrap(VIQueue queue);
 VI_API VkCommandBuffer vi_command_unwrap(VICommand command);
+VI_API VkBuffer vi_buffer_unwrap(VIBuffer buffer);
+VI_API VkImage vi_image_unwrap(VIImage image);
+VI_API VkImageView vi_image_unwrap_view(VIImage image);
+VI_API VkSampler vi_image_unwrap_sampler(VIImage image);
+VI_API uint32_t vi_image_unwrap_gl(VIImage image);
 
 // TODO: this should probably be done by user
 VI_API VIBuffer vi_util_create_buffer_staged(VIDevice device, VIBufferInfo* info, void* data);

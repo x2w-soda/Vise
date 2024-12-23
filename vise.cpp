@@ -4950,6 +4950,40 @@ VkCommandBuffer vi_command_unwrap(VICommand command)
 	return command->vk.handle;
 }
 
+VkBuffer vi_buffer_unwrap(VIBuffer buffer)
+{
+	VI_ASSERT(buffer && buffer->device->backend == VI_BACKEND_VULKAN);
+
+	return buffer->vk.handle;
+}
+
+VkImage vi_image_unwrap(VIImage image)
+{
+	VI_ASSERT(image && image->device->backend == VI_BACKEND_VULKAN);
+
+	return image->vk.handle;
+}
+
+VkImageView vi_image_unwrap_view(VIImage image)
+{
+	VI_ASSERT(image && image->device->backend == VI_BACKEND_VULKAN);
+
+	return image->vk.view_handle;
+}
+
+VkSampler vi_image_unwrap_sampler(VIImage image)
+{
+	VI_ASSERT(image && image->device->backend == VI_BACKEND_VULKAN);
+
+	return image->vk.sampler_handle;
+}
+
+uint32_t vi_image_unwrap_gl(VIImage image)
+{
+	VI_ASSERT(image && image->device->backend == VI_BACKEND_OPENGL);
+
+	return (uint32_t)image->gl.handle;
+}
 
 VIBuffer vi_util_create_buffer_staged(VIDevice device, VIBufferInfo* info, void* data)
 {

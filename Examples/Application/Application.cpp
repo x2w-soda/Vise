@@ -163,6 +163,37 @@ void Application::ImGuiRender(VICommand cmd)
 		ImGuiVulkanRender(cmd);
 }
 
+uint64_t Application::ImGuiAddImage(VIImage image, VkImageLayout image_layout)
+{
+	uint64_t imgui_image;
+
+	if (mBackend == VI_BACKEND_VULKAN)
+	{
+		VkImageView view = vi_image_unwrap_view(image);
+		VkSampler sampler = vi_image_unwrap_sampler(image);
+		VkDescriptorSet set = ImGui_ImplVulkan_AddTexture(sampler, view, image_layout);
+
+		// cast the vulkan descriptor set (pointer type) into 64 bit handle for Dear ImGui
+		imgui_image = (uint64_t)set;
+	}
+	else
+	{
+		// OpenGL GLuint handles are 32-bit, Dear ImGui uses 64 bit handles
+		imgui_image = (uint64_t)vi_image_unwrap_gl(image);
+	}
+
+	return imgui_image;
+}
+
+void Application::ImGuiRemoveImage(uint64_t imgui_image)
+{
+	if (mBackend == VI_BACKEND_VULKAN)
+	{
+		// notify Dear ImGui to destroy the descriptor set
+		ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)imgui_image);
+	}
+}
+
 void Application::ImGuiOpenGLInit()
 {
 	IMGUI_CHECKVERSION();
@@ -209,7 +240,7 @@ void Application::ImGuiVulkanInit()
 	initI.Queue = vi_queue_unwrap(vi_device_get_graphics_queue(mDevice));
 	initI.PipelineCache = VK_NULL_HANDLE;
 	initI.DescriptorPool = VK_NULL_HANDLE;
-	initI.DescriptorPoolSize = 1;
+	initI.DescriptorPoolSize = 256;
 	initI.Allocator = nullptr;
 	initI.MinImageCount = mDeviceLimits.swapchain_framebuffer_count;
 	initI.ImageCount = mDeviceLimits.swapchain_framebuffer_count;
