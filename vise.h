@@ -143,6 +143,7 @@ enum VISamplerAddressMode
 enum VIFilter
 {
 	VI_FILTER_LINEAR,
+	VI_FILTER_NEAREST,
 };
 
 struct VIDeviceInfo
@@ -484,8 +485,8 @@ VI_API void vi_buffer_map_invalidate(VIBuffer buffer, uint32_t offset, uint32_t 
 VI_API void vi_buffer_unmap(VIBuffer buffer);
 
 VI_API void vi_reset_command(VICommand cmd);
-VI_API void vi_cmd_begin_record(VICommand cmd, VkCommandBufferUsageFlags flags);
-VI_API void vi_cmd_end_record(VICommand cmd);
+VI_API void vi_begin_command(VICommand cmd, VkCommandBufferUsageFlags flags);
+VI_API void vi_end_command(VICommand cmd);
 VI_API void vi_cmd_opengl_callback(VICommand cmd, void (*callback)(void* data), void* data);
 VI_API void vi_cmd_copy_buffer(VICommand cmd, VIBuffer src, VIBuffer dst, uint32_t region_count, VkBufferCopy* regions);
 VI_API void vi_cmd_copy_buffer_to_image(VICommand cmd, VIBuffer buffer, VIImage image, VkImageLayout layout, uint32_t region_count, VkBufferImageCopy* regions);

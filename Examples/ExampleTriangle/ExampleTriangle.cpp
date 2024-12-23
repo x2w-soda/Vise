@@ -128,7 +128,7 @@ void ExampleTriangle::RecordCommands()
 	{
 		VICommand cmd = mCommands[i];
 
-		vi_cmd_begin_record(cmd, 0);
+		vi_begin_command(cmd, 0);
 
 		VkClearValue color_clear = MakeClearColor(0.0f, 0.0f, 0.4f, 1.0f);
 		VkClearValue depth_clear = MakeClearDepthStencil(1.0f, 0);
@@ -155,7 +155,7 @@ void ExampleTriangle::RecordCommands()
 			vi_cmd_draw(cmd, &info);
 		}
 		vi_cmd_end_pass(cmd);
-		vi_cmd_end_record(cmd);
+		vi_end_command(cmd);
 	}
 }
 

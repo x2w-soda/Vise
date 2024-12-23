@@ -130,14 +130,14 @@ void TestDriver::Run()
 		test.Init(mDevice, mMSESetPool, mMSESetLayout);
 
 	VICommand cmd = vi_alloc_command(mDevice, mCommandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
-	vi_cmd_begin_record(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	vi_begin_command(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	vi_cmd_bind_compute_pipeline(cmd, mMSEPipeline);
 	for (MSETest& test : mTests)
 	{
 		vi_cmd_bind_set(cmd, 0, test.MSESet, mMSEPipeline);
 		vi_cmd_dispatch(cmd, workgroup_x, workgroup_y, 1);
 	}
-	vi_cmd_end_record(cmd);
+	vi_end_command(cmd);
 
 	VISubmitInfo submitI;
 	submitI.cmd_count = 1;

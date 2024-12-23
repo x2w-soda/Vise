@@ -381,7 +381,7 @@ void ExamplePostProcess::Run()
 		vi_buffer_map_write(frame->scene_ubo, 0, sizeof(ubo), &ubo);
 
 		vi_reset_command(frame->cmd);
-		vi_cmd_begin_record(frame->cmd, 0);
+		vi_begin_command(frame->cmd, 0);
 
 		VkClearValue clear = MakeClearColor(0.1f, 0.7f, 0.7f, 1.0f);
 		VkClearValue clear_depth = MakeClearDepthStencil(1.0f, 0);
@@ -440,7 +440,7 @@ void ExamplePostProcess::Run()
 			Application::ImGuiRender(frame->cmd);
 		}
 		vi_cmd_end_pass(frame->cmd);
-		vi_cmd_end_record(frame->cmd);
+		vi_end_command(frame->cmd);
 
 		VkPipelineStageFlags stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		VISubmitInfo submitI;

@@ -770,15 +770,16 @@ static const VIGLSLTypeEntry vi_glsl_type_table[4] = {
 	{ VI_GLSL_TYPE_UINT, VK_FORMAT_R32_UINT,            1, GL_UNSIGNED_INT },
 };
 
-struct VISamplerFilterEntry
+struct VIFilterEntry
 {
 	VIFilter vi_filter;
 	VkFilter vk_filter;
 	GLenum gl_filter;
 };
 
-static const VISamplerFilterEntry vi_sampler_filter_table[1] = {
-	{ VI_FILTER_LINEAR, VK_FILTER_LINEAR, GL_LINEAR },
+static const VIFilterEntry vi_filter_table[2] = {
+	{ VI_FILTER_LINEAR,  VK_FILTER_LINEAR,  GL_LINEAR },
+	{ VI_FILTER_NEAREST, VK_FILTER_NEAREST, GL_NEAREST },
 };
 
 struct VISamplerAddressModeEntry
@@ -2724,12 +2725,12 @@ static void cast_image_type(VIImageType in_type, GLenum* out_type)
 
 static void cast_filter_vk(VIFilter in_filter, VkFilter* out_filter)
 {
-	*out_filter = vi_sampler_filter_table[(int)in_filter].vk_filter;
+	*out_filter = vi_filter_table[(int)in_filter].vk_filter;
 }
 
 static void cast_filter_gl(VIFilter in_filter, GLenum* out_filter)
 {
-	*out_filter = vi_sampler_filter_table[(int)in_filter].gl_filter;
+	*out_filter = vi_filter_table[(int)in_filter].gl_filter;
 }
 
 static void cast_sampler_address_mode_vk(VISamplerAddressMode in_address_mode, VkSamplerAddressMode* out_address_mode)
@@ -4500,7 +4501,7 @@ void vi_reset_command(VICommand cmd)
 	VK_CHECK(vkResetCommandBuffer(cmd->vk.handle, 0));
 }
 
-void vi_cmd_begin_record(VICommand cmd, VkCommandBufferUsageFlags flags)
+void vi_begin_command(VICommand cmd, VkCommandBufferUsageFlags flags)
 {
 	if (cmd->device->backend == VI_BACKEND_OPENGL)
 	{
@@ -4520,7 +4521,7 @@ void vi_cmd_begin_record(VICommand cmd, VkCommandBufferUsageFlags flags)
 	cmd->device->active_pipeline = VI_NULL_HANDLE;
 }
 
-void vi_cmd_end_record(VICommand cmd)
+void vi_end_command(VICommand cmd)
 {
 	// TODO: put in thread safe memory, use VICommandPool for each CPU thread?
 	cmd->device->active_pipeline = VI_NULL_HANDLE;
@@ -5018,7 +5019,7 @@ VIBuffer vi_util_create_buffer_staged(VIDevice device, VIBufferInfo* info, void*
 	vi_buffer_unmap(src_buffer);
 
 	VICommand staging_cmd = vi_alloc_command(device, &vk->cmd_pool_graphics, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
-	vi_cmd_begin_record(staging_cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	vi_begin_command(staging_cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	{
 		VkBufferCopy region;
 		region.size = info->size;
@@ -5026,7 +5027,7 @@ VIBuffer vi_util_create_buffer_staged(VIDevice device, VIBufferInfo* info, void*
 		region.dstOffset = 0;
 		vi_cmd_copy_buffer(staging_cmd, src_buffer, dst_buffer, 1, &region);
 	}
-	vi_cmd_end_record(staging_cmd);
+	vi_end_command(staging_cmd);
 
 	VISubmitInfo submitI{};
 	submitI.cmd_count = 1;
@@ -5092,7 +5093,7 @@ VIImage vi_util_create_image_staged(VIDevice device, VIImageInfo* info, void* da
 	vi_buffer_unmap(src_buffer);
 
 	VICommand staging_cmd = vi_alloc_command(device, &vk->cmd_pool_graphics, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
-	vi_cmd_begin_record(staging_cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	vi_begin_command(staging_cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	{
 		vi_util_cmd_image_layout_transition(staging_cmd, dst_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
@@ -5110,7 +5111,7 @@ VIImage vi_util_create_image_staged(VIDevice device, VIImageInfo* info, void* da
 
 		vi_util_cmd_image_layout_transition(staging_cmd, dst_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, image_layout);
 	}
-	vi_cmd_end_record(staging_cmd);
+	vi_end_command(staging_cmd);
 
 	VISubmitInfo submitI{};
 	submitI.cmds = &staging_cmd;
