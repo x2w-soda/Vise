@@ -406,6 +406,12 @@ struct VIFramebufferInfo
 	VIPass pass;
 };
 
+struct VIMemoryBarrier
+{
+	VkAccessFlags src_access;
+	VkAccessFlags dst_access;
+};
+
 struct VIImageMemoryBarrier
 {
 	VIImage image;
@@ -416,6 +422,17 @@ struct VIImageMemoryBarrier
 	uint32_t src_family_index;
 	uint32_t dst_family_index;
 	VkImageSubresourceRange subresource_range;
+};
+
+struct VIBufferMemoryBarrier
+{
+	VIBuffer buffer;
+	VkAccessFlags src_access;
+	VkAccessFlags dst_access;
+	uint32_t src_family_index;
+	uint32_t dst_family_index;
+	uint32_t offset;
+	uint32_t size;
 };
 
 struct VIDrawInfo
@@ -507,7 +524,9 @@ VI_API void vi_cmd_set_viewport(VICommand cmd, VkViewport viewport);
 VI_API void vi_cmd_set_scissor(VICommand cmd, VkRect2D scissor);
 VI_API void vi_cmd_draw(VICommand cmd, const VIDrawInfo* info);
 VI_API void vi_cmd_draw_indexed(VICommand cmd, const VIDrawIndexedInfo* info);
-VI_API void vi_cmd_pipeline_barrier_image_memory(VICommand cmd, VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages, VkDependencyFlags deps, uint32_t barrier_count, VIImageMemoryBarrier* barriers);
+VI_API void vi_cmd_pipeline_barrier_memory(VICommand cmd, VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages, VkDependencyFlags deps, uint32_t barrier_count, const VIMemoryBarrier* barriers);
+VI_API void vi_cmd_pipeline_barrier_image_memory(VICommand cmd, VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages, VkDependencyFlags deps, uint32_t barrier_count, const VIImageMemoryBarrier* barriers);
+VI_API void vi_cmd_pipeline_barrier_buffer_memory(VICommand cmd, VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages, VkDependencyFlags deps, uint32_t barrier_count, const VIBufferMemoryBarrier* barriers);
 
 VI_API VkInstance vi_device_unwrap_instance(VIDevice device);
 VI_API VkDevice vi_device_unwrap(VIDevice device);

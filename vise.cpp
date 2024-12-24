@@ -726,7 +726,9 @@ static void cast_glsl_type(VIGLSLType in_type, GLint* out_component_count, GLenu
 static void cast_glsl_type(const spirv_cross::SPIRType& in_type, VIGLSLType* out_type);
 static void cast_pipeline_vertex_input(uint32_t attr_count, VIVertexAttribute* attrs, uint32_t binding_count, VIVertexBinding* bindings,
 	std::vector<VkVertexInputAttributeDescription>& out_attrs, std::vector<VkVertexInputBindingDescription>& out_bindings);
+static void cast_memory_barrier(const VIMemoryBarrier& in_barrier, VkMemoryBarrier* out_barrier);
 static void cast_image_memory_barrier(const VIImageMemoryBarrier& in_barrier, VkImageMemoryBarrier* out_barrier);
+static void cast_buffer_memory_barrier(const VIBufferMemoryBarrier& in_barrier, VkBufferMemoryBarrier* out_barrier);
 static void cast_subpass_info(const VIPassInfo& in_pass_info, const VISubpassInfo& in_subpass_info,
 	std::vector<VkAttachmentReference>* out_color_refs,
 	std::optional<VkAttachmentReference>* out_depth_stencil_ref);
@@ -2906,9 +2908,18 @@ static void cast_pipeline_vertex_input(uint32_t attr_count, VIVertexAttribute* a
 	}
 }
 
+static void cast_memory_barrier(const VIMemoryBarrier& in_barrier, VkMemoryBarrier* out_barrier)
+{
+	out_barrier->sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	out_barrier->pNext = nullptr;
+	out_barrier->srcAccessMask = in_barrier.src_access;
+	out_barrier->dstAccessMask = in_barrier.dst_access;
+}
+
 static void cast_image_memory_barrier(const VIImageMemoryBarrier& in_barrier, VkImageMemoryBarrier* out_barrier)
 {
 	out_barrier->sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	out_barrier->pNext = nullptr;
 	out_barrier->image = in_barrier.image->vk.handle;
 	out_barrier->newLayout = in_barrier.new_layout;
 	out_barrier->oldLayout = in_barrier.old_layout;
@@ -2917,7 +2928,19 @@ static void cast_image_memory_barrier(const VIImageMemoryBarrier& in_barrier, Vk
 	out_barrier->srcQueueFamilyIndex = in_barrier.src_family_index;
 	out_barrier->dstQueueFamilyIndex = in_barrier.dst_family_index;
 	out_barrier->subresourceRange = in_barrier.subresource_range;
+}
+
+static void cast_buffer_memory_barrier(const VIBufferMemoryBarrier& in_barrier, VkBufferMemoryBarrier* out_barrier)
+{
+	out_barrier->sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
 	out_barrier->pNext = nullptr;
+	out_barrier->buffer = in_barrier.buffer->vk.handle;
+	out_barrier->srcAccessMask = in_barrier.src_access;
+	out_barrier->dstAccessMask = in_barrier.dst_access;
+	out_barrier->srcQueueFamilyIndex = in_barrier.src_family_index;
+	out_barrier->dstQueueFamilyIndex = in_barrier.dst_family_index;
+	out_barrier->offset = (VkDeviceSize)in_barrier.offset;
+	out_barrier->size = (VkDeviceSize)in_barrier.size;
 }
 
 static void cast_subpass_info(const VIPassInfo& in_pass_info, const VISubpassInfo& in_subpass_info,
@@ -4891,8 +4914,22 @@ void vi_cmd_draw_indexed(VICommand cmd, const VIDrawIndexedInfo* info)
 	vkCmdDrawIndexed(cmd->vk.handle, info->index_count, info->instance_count, info->index_start, 0, info->instance_start);
 }
 
+void vi_cmd_pipeline_barrier_memory(VICommand cmd, VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages,
+	VkDependencyFlags deps, uint32_t barrier_count, const VIMemoryBarrier* barriers)
+{
+	if (cmd->device->backend == VI_BACKEND_OPENGL)
+		return;
+
+	std::vector<VkMemoryBarrier> vk_barriers(barrier_count);
+
+	for (uint32_t i = 0; i < barrier_count; i++)
+		cast_memory_barrier(barriers[i], vk_barriers.data() + i);
+
+	vkCmdPipelineBarrier(cmd->vk.handle, src_stages, dst_stages, deps, vk_barriers.size(), vk_barriers.data(), 0, nullptr, 0, nullptr);
+}
+
 void vi_cmd_pipeline_barrier_image_memory(VICommand cmd, VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages,
-	VkDependencyFlags deps, uint32_t barrier_count, VIImageMemoryBarrier* barriers)
+	VkDependencyFlags deps, uint32_t barrier_count, const VIImageMemoryBarrier* barriers)
 {
 	if (cmd->device->backend == VI_BACKEND_OPENGL)
 		return;
@@ -4903,6 +4940,20 @@ void vi_cmd_pipeline_barrier_image_memory(VICommand cmd, VkPipelineStageFlags sr
 		cast_image_memory_barrier(barriers[i], vk_barriers.data() + i);
 
 	vkCmdPipelineBarrier(cmd->vk.handle, src_stages, dst_stages, deps, 0, nullptr, 0, nullptr, vk_barriers.size(), vk_barriers.data());
+}
+
+void vi_cmd_pipeline_barrier_buffer_memory(VICommand cmd, VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages,
+	VkDependencyFlags deps, uint32_t barrier_count, const VIBufferMemoryBarrier* barriers)
+{
+	if (cmd->device->backend == VI_BACKEND_OPENGL)
+		return;
+
+	std::vector<VkBufferMemoryBarrier> vk_barriers(barrier_count);
+
+	for (uint32_t i = 0; i < barrier_count; i++)
+		cast_buffer_memory_barrier(barriers[i], vk_barriers.data() + i);
+
+	vkCmdPipelineBarrier(cmd->vk.handle, src_stages, dst_stages, deps, 0, nullptr, vk_barriers.size(), vk_barriers.data(), 0, nullptr);
 }
 
 VkInstance vi_device_unwrap_instance(VIDevice device)
