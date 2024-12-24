@@ -176,12 +176,12 @@ ExamplePostProcess::ExamplePostProcess(VIBackend backend)
 		mPostProcessPass = vi_device_get_swapchain_pass(mDevice);
 	}
 
-	mVMRender = CreateModule(mPipelineLayout, VI_MODULE_TYPE_VERTEX_BIT, render_vertex_src);
-	mFMRender = CreateModule(mPipelineLayout, VI_MODULE_TYPE_FRAGMENT_BIT, render_fragment_src);
-	mVMPostProcess = CreateModule(mPipelineLayout, VI_MODULE_TYPE_VERTEX_BIT, postprocess_vertex_src);
-	mFMGrayscale = CreateModule(mPipelineLayout, VI_MODULE_TYPE_FRAGMENT_BIT, grayscale_fragment_src);
-	mFMInvert = CreateModule(mPipelineLayout, VI_MODULE_TYPE_FRAGMENT_BIT, invert_fragment_src);
-	mFMNone = CreateModule(mPipelineLayout, VI_MODULE_TYPE_FRAGMENT_BIT, none_fragment_src);
+	mVMRender = CreateModule(mPipelineLayout, VI_MODULE_TYPE_VERTEX, render_vertex_src);
+	mFMRender = CreateModule(mPipelineLayout, VI_MODULE_TYPE_FRAGMENT, render_fragment_src);
+	mVMPostProcess = CreateModule(mPipelineLayout, VI_MODULE_TYPE_VERTEX, postprocess_vertex_src);
+	mFMGrayscale = CreateModule(mPipelineLayout, VI_MODULE_TYPE_FRAGMENT, grayscale_fragment_src);
+	mFMInvert = CreateModule(mPipelineLayout, VI_MODULE_TYPE_FRAGMENT, invert_fragment_src);
+	mFMNone = CreateModule(mPipelineLayout, VI_MODULE_TYPE_FRAGMENT, none_fragment_src);
 
 	VIVertexBinding vertexBinding;
 	std::vector<VIVertexAttribute> vertexAttrs;
@@ -299,8 +299,8 @@ ExamplePostProcess::ExamplePostProcess(VIBackend backend)
 		mFrames[i].fbo = vi_create_framebuffer(mDevice, &fbI);
 		mFrames[i].cmd = vi_alloc_command(mDevice, mCmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 		mFrames[i].set = AllocAndUpdateSet(mSetPool, mSetLayout, {
-			{ 0, mFrames[i].scene_ubo, VI_NULL_HANDLE },
-			{ 1, VI_NULL_HANDLE, mFrames[i].scene_image },
+			{ 0, mFrames[i].scene_ubo, VI_NULL },
+			{ 1, VI_NULL, mFrames[i].scene_image },
 		});
 	}
 

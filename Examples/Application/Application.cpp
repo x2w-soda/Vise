@@ -298,7 +298,7 @@ VIPipelineLayout Application::CreatePipelineLayout(const std::initializer_list<V
 	return vi_create_pipeline_layout(mDevice, &info);
 }
 
-VIModule Application::CreateModule(VIPipelineLayout layout, VIModuleTypeBit type, const char* vise_glsl)
+VIModule Application::CreateModule(VIPipelineLayout layout, VIModuleType type, const char* vise_glsl)
 {
 	VIModuleInfo info;
 	info.pipeline_layout = layout;

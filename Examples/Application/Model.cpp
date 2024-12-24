@@ -2,8 +2,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 Mesh::Mesh()
-    : VBO(VI_NULL_HANDLE)
-    , IBO(VI_NULL_HANDLE)
+    : VBO(VI_NULL)
+    , IBO(VI_NULL)
 {
 }
 

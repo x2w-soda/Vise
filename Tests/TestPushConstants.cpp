@@ -95,14 +95,14 @@ TestPushConstants::TestPushConstants(VIBackend backend)
 
 	VIModuleInfo moduleI;
 	moduleI.pipeline_layout = mTestPipelineLayout;
-	moduleI.type = VI_MODULE_TYPE_VERTEX_BIT;
+	moduleI.type = VI_MODULE_TYPE_VERTEX;
 	moduleI.vise_glsl = test_vertex_src1;
 	mTestVM1 = vi_create_module(mDevice, &moduleI);
 	
 	moduleI.vise_glsl = test_vertex_src2;
 	mTestVM2 = vi_create_module(mDevice, &moduleI);
 
-	moduleI.type = VI_MODULE_TYPE_FRAGMENT_BIT;
+	moduleI.type = VI_MODULE_TYPE_FRAGMENT;
 	moduleI.vise_glsl = test_fragment_src;
 	mTestFM = vi_create_module(mDevice, &moduleI);
 
@@ -221,7 +221,7 @@ void TestPushConstants::Run()
 	submit.wait_count = 0;
 	submit.wait_stages = 0;
 	VIQueue queue = vi_device_get_graphics_queue(mDevice);
-	vi_queue_submit(queue, 1, &submit, VI_NULL_HANDLE);
+	vi_queue_submit(queue, 1, &submit, VI_NULL);
 
 	vi_device_wait_idle(mDevice);
 	vi_free_command(mDevice, cmd);

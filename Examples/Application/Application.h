@@ -141,7 +141,7 @@ protected:
 	VIPipelineLayout CreatePipelineLayout(const std::initializer_list<VISetLayout>& list, uint32_t push_constant_size = 0);
 
 	// helper to reduce shader module creation verbosity
-	VIModule CreateModule(VIPipelineLayout layout, VIModuleTypeBit type, const char* vise_glsl);
+	VIModule CreateModule(VIPipelineLayout layout, VIModuleType type, const char* vise_glsl);
 
 	// helper to reduce set allocation verbosity
 	VISet AllocAndUpdateSet(VISetPool pool, VISetLayout layout, const std::initializer_list<VISetUpdateInfo>& updates);

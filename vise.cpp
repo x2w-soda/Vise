@@ -148,7 +148,7 @@ struct VIPassObj : VIObject
 
 struct VIModuleObj : VIObject
 {
-	VIModuleTypeBit type;
+	VIModuleType type;
 
 	union
 	{
@@ -713,8 +713,8 @@ static void flip_image_data(uint8_t* data, uint32_t image_width, uint32_t image_
 
 static void debug_print_compilation(const spirv_cross::CompilerGLSL& compiler, EShLanguage stage);
 
-static void cast_module_type_bit(VIModuleTypeBit in_type, EShLanguage* out_type);
-static void cast_module_type_bit(VIModuleTypeBit in_type, GLenum* out_type);
+static void cast_module_type_bit(VIModuleType in_type, EShLanguage* out_type);
+static void cast_module_type_bit(VIModuleType in_type, GLenum* out_type);
 static void cast_index_type(VkIndexType in_type, GLenum* out_type);
 static void cast_buffer_usages(VIBufferType in_type, VIBufferUsageFlags in_usages, VkBufferUsageFlags* out_usages);
 static void cast_buffer_type(VIBufferType in_type, GLenum* out_type);
@@ -2178,9 +2178,9 @@ static void gl_cmd_execute_bind_set(VIDevice device, GLCommand* glcmd)
 	GLenum internal_format;
 	GLenum data_format, data_type;
 
-	if (glcmd->bind_set.pipeline != VI_NULL_HANDLE)
+	if (glcmd->bind_set.pipeline != VI_NULL)
 		pipeline_layout = glcmd->bind_set.pipeline->layout;
-	else if (glcmd->bind_set.compute_pipeline != VI_NULL_HANDLE)
+	else if (glcmd->bind_set.compute_pipeline != VI_NULL)
 		pipeline_layout = glcmd->bind_set.compute_pipeline->layout;
 	else
 		VI_UNREACHABLE;
@@ -2689,31 +2689,31 @@ static void debug_print_compilation(const spirv_cross::CompilerGLSL& compiler, E
 	std::cout << "Builtin Output count: " << resources.builtin_outputs.size() << std::endl;
 }
 
-static void cast_module_type(VIModuleTypeFlags in_flags, VkShaderStageFlags* out_stages)
+static void cast_module_type(VIModuleType in_flags, VkShaderStageFlags* out_stages)
 {
 	*out_stages = 0;
 
-	if (in_flags & VI_MODULE_TYPE_VERTEX_BIT)
+	if (in_flags & VI_MODULE_TYPE_VERTEX)
 		*out_stages |= VK_SHADER_STAGE_VERTEX_BIT;
 
-	if (in_flags & VI_MODULE_TYPE_FRAGMENT_BIT)
+	if (in_flags & VI_MODULE_TYPE_FRAGMENT)
 		*out_stages |= VK_SHADER_STAGE_FRAGMENT_BIT;
 
-	if (in_flags & VI_MODULE_TYPE_COMPUTE_BIT)
+	if (in_flags & VI_MODULE_TYPE_COMPUTE)
 		*out_stages |= VK_SHADER_STAGE_COMPUTE_BIT;
 }
 
-static void cast_module_type_bit(VIModuleTypeBit in_type, EShLanguage* out_type)
+static void cast_module_type_bit(VIModuleType in_type, EShLanguage* out_type)
 {
 	switch (in_type)
 	{
-	case VI_MODULE_TYPE_VERTEX_BIT:
+	case VI_MODULE_TYPE_VERTEX:
 		*out_type = EShLangVertex;
 		break;
-	case VI_MODULE_TYPE_FRAGMENT_BIT:
+	case VI_MODULE_TYPE_FRAGMENT:
 		*out_type = EShLangFragment;
 		break;
-	case VI_MODULE_TYPE_COMPUTE_BIT:
+	case VI_MODULE_TYPE_COMPUTE:
 		*out_type = EShLangCompute;
 		break;
 	default:
@@ -2721,17 +2721,17 @@ static void cast_module_type_bit(VIModuleTypeBit in_type, EShLanguage* out_type)
 	}
 }
 
-static void cast_module_type_bit(VIModuleTypeBit in_type, GLenum* out_type)
+static void cast_module_type_bit(VIModuleType in_type, GLenum* out_type)
 {
 	switch (in_type)
 	{
-	case VI_MODULE_TYPE_VERTEX_BIT:
+	case VI_MODULE_TYPE_VERTEX:
 		*out_type = GL_VERTEX_SHADER;
 		break;
-	case VI_MODULE_TYPE_FRAGMENT_BIT:
+	case VI_MODULE_TYPE_FRAGMENT:
 		*out_type = GL_FRAGMENT_SHADER;
 		break;
-	case VI_MODULE_TYPE_COMPUTE_BIT:
+	case VI_MODULE_TYPE_COMPUTE:
 		*out_type = GL_COMPUTE_SHADER;
 		break;
 	default:
@@ -3135,7 +3135,7 @@ VIDevice vi_create_device_vk(const VIDeviceInfo* info, VIDeviceLimits* limits)
 	if ((major < required_major) || (major == required_major && minor < required_minor))
 	{
 		printf("VISE: vulkan loader version unsupported: %d.%d.%d\n", major, minor, patch);
-		return VI_NULL_HANDLE;
+		return VI_NULL;
 	}
 
 	VIDevice device = (VIDevice)vi_malloc(sizeof(VIDeviceObj));
@@ -3488,7 +3488,7 @@ void vi_queue_submit(VIQueue queue, uint32_t submit_count, VISubmitInfo* submits
 		vk_signals_base += submit.signal_count;
 	}
 
-	VkFence vk_fence = (fence == VI_NULL_HANDLE) ? VK_NULL_HANDLE : fence->vk_handle;
+	VkFence vk_fence = (fence == VI_NULL) ? VK_NULL_HANDLE : fence->vk_handle;
 	VK_CHECK(vkQueueSubmit(queue->vk_handle, submit_count, infos.data(), vk_fence));
 }
 
@@ -3528,7 +3528,7 @@ void vi_set_update(VISet set, uint32_t update_count, const VISetUpdateInfo* upda
 		if (descriptor_type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
 			descriptor_type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
 		{
-			VI_ASSERT(updates[i].buffer != VI_NULL_HANDLE);
+			VI_ASSERT(updates[i].buffer != VI_NULL);
 
 			VkDescriptorBufferInfo bufferI;
 			bufferI.buffer = updates[i].buffer->vk.handle;
@@ -3539,7 +3539,7 @@ void vi_set_update(VISet set, uint32_t update_count, const VISetUpdateInfo* upda
 		else if (descriptor_type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER ||
 			descriptor_type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
 		{
-			VI_ASSERT(updates[i].image != VI_NULL_HANDLE);
+			VI_ASSERT(updates[i].image != VI_NULL);
 
 			VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 			if (updates[i].image->info.usage & VI_IMAGE_USAGE_STORAGE_BIT)
@@ -4662,13 +4662,13 @@ void vi_begin_command(VICommand cmd, VkCommandBufferUsageFlags flags)
 	VK_CHECK(vkBeginCommandBuffer(cmd->vk.handle, &bufferBI));
 
 	// TODO: put in thread safe memory, use VICommandPool for each CPU thread?
-	cmd->device->active_pipeline = VI_NULL_HANDLE;
+	cmd->device->active_pipeline = VI_NULL;
 }
 
 void vi_end_command(VICommand cmd)
 {
 	// TODO: put in thread safe memory, use VICommandPool for each CPU thread?
-	cmd->device->active_pipeline = VI_NULL_HANDLE;
+	cmd->device->active_pipeline = VI_NULL;
 
 	if (cmd->device->backend == VI_BACKEND_OPENGL)
 		return;
@@ -4904,7 +4904,7 @@ void vi_cmd_bind_vertex_buffers(VICommand cmd, uint32_t first_binding, uint32_t 
 {
 	if (cmd->device->backend == VI_BACKEND_OPENGL)
 	{
-		VI_ASSERT(cmd->device->active_pipeline != VI_NULL_HANDLE);
+		VI_ASSERT(cmd->device->active_pipeline != VI_NULL);
 
 		GLCommand* glcmd = gl_append_command(cmd, GL_COMMAND_TYPE_BIND_VERTEX_BUFFERS);
 		new (&glcmd->bind_vertex_buffers) GLCommandBindVertexBuffers();
@@ -4951,7 +4951,7 @@ void vi_cmd_bind_set(VICommand cmd, uint32_t set_idx, VISet set, VIPipeline pipe
 		glcmd->bind_set.set = set;
 		glcmd->bind_set.set_index = set_idx;
 		glcmd->bind_set.pipeline = pipeline;
-		glcmd->bind_set.compute_pipeline = VI_NULL_HANDLE;
+		glcmd->bind_set.compute_pipeline = VI_NULL;
 		return;
 	}
 
@@ -4965,7 +4965,7 @@ void vi_cmd_bind_set(VICommand cmd, uint32_t set_idx, VISet set, VIComputePipeli
 		GLCommand* glcmd = gl_append_command(cmd, GL_COMMAND_TYPE_BIND_SET);
 		glcmd->bind_set.set = set;
 		glcmd->bind_set.set_index = set_idx;
-		glcmd->bind_set.pipeline = VI_NULL_HANDLE;
+		glcmd->bind_set.pipeline = VI_NULL;
 		glcmd->bind_set.compute_pipeline = pipeline;
 		return;
 	}
@@ -5218,7 +5218,7 @@ VIBuffer vi_util_create_buffer_staged(VIDevice device, VIBufferInfo* info, void*
 	VISubmitInfo submitI{};
 	submitI.cmd_count = 1;
 	submitI.cmds = &staging_cmd;
-	vi_queue_submit(&device->queue_graphics, 1, &submitI, VI_NULL_HANDLE);
+	vi_queue_submit(&device->queue_graphics, 1, &submitI, VI_NULL);
 	vi_queue_wait_idle(&device->queue_graphics);
 	vi_free_command(device, staging_cmd);
 
@@ -5303,7 +5303,7 @@ VIImage vi_util_create_image_staged(VIDevice device, VIImageInfo* info, void* da
 	VISubmitInfo submitI{};
 	submitI.cmds = &staging_cmd;
 	submitI.cmd_count = 1;
-	vi_queue_submit(&device->queue_graphics, 1, &submitI, VI_NULL_HANDLE);
+	vi_queue_submit(&device->queue_graphics, 1, &submitI, VI_NULL);
 	vi_queue_wait_idle(&device->queue_graphics);
 	vi_free_command(device, staging_cmd);
 

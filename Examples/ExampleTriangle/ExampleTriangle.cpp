@@ -43,12 +43,12 @@ ExampleTriangle::ExampleTriangle(VIBackend backend)
 	mPipelineLayout = vi_create_pipeline_layout(mDevice, &pipelineLayoutI);
 
 	VIModuleInfo moduleInfo;
-	moduleInfo.type = VI_MODULE_TYPE_VERTEX_BIT;
+	moduleInfo.type = VI_MODULE_TYPE_VERTEX;
 	moduleInfo.pipeline_layout = mPipelineLayout;
 	moduleInfo.vise_glsl = vertex_src;
 	mVertexModule = vi_create_module(mDevice, &moduleInfo);
 
-	moduleInfo.type = VI_MODULE_TYPE_FRAGMENT_BIT;
+	moduleInfo.type = VI_MODULE_TYPE_FRAGMENT;
 	moduleInfo.pipeline_layout = mPipelineLayout;
 	moduleInfo.vise_glsl = fragment_src;
 	mFragmentModule = vi_create_module(mDevice, &moduleInfo);

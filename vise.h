@@ -22,7 +22,7 @@
 	struct HANDLE ## Obj;\
 	using HANDLE = HANDLE ## Obj *;
 
-#define VI_NULL_HANDLE nullptr
+#define VI_NULL nullptr
 
 VI_DECLARE_HANDLE(VIDevice);
 VI_DECLARE_HANDLE(VIBuffer);
@@ -65,13 +65,12 @@ enum VIBackend
 	VI_BACKEND_OPENGL,
 };
 
-enum VIModuleTypeBit : uint32_t
+enum VIModuleType
 {
-	VI_MODULE_TYPE_VERTEX_BIT = 1,
-	VI_MODULE_TYPE_FRAGMENT_BIT = 2,
-	VI_MODULE_TYPE_COMPUTE_BIT = 4,
+	VI_MODULE_TYPE_VERTEX,
+	VI_MODULE_TYPE_FRAGMENT,
+	VI_MODULE_TYPE_COMPUTE,
 };
-using VIModuleTypeFlags = uint32_t;
 
 enum VISetBindingType
 {
@@ -218,7 +217,7 @@ struct VISwapchainInfo
 
 struct VIModuleInfo
 {
-	VIModuleTypeBit type;
+	VIModuleType type;
 	VIPipelineLayout pipeline_layout = nullptr;
 	const char* vise_glsl = nullptr;
 };
@@ -273,8 +272,8 @@ struct VISetLayoutInfo
 struct VISetUpdateInfo
 {
 	uint32_t binding;
-	VIBuffer buffer = VI_NULL_HANDLE;
-	VIImage image = VI_NULL_HANDLE;
+	VIBuffer buffer = VI_NULL;
+	VIImage image = VI_NULL;
 };
 
 struct VIVertexAttribute
