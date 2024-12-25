@@ -25,6 +25,16 @@ add_library(stb STATIC
 	${CMAKE_CURRENT_SOURCE_DIR}/../Extern/stb/stb_image_write.h
 )
 
+add_library(tinygltf STATIC
+	${CMAKE_CURRENT_SOURCE_DIR}/../Extern/tinygltf/tiny_gltf.cc
+	${CMAKE_CURRENT_SOURCE_DIR}/../Extern/tinygltf/tiny_gltf.h
+	${CMAKE_CURRENT_SOURCE_DIR}/../Extern/tinygltf/json.hpp
+)
+
+target_include_directories(tinygltf PRIVATE
+	${CMAKE_CURRENT_SOURCE_DIR}/../Extern/stb
+)
+
 # for the imgui translation unit:
 # - Vise uses volk under the hood, requiring IMGUI_IMPL_VULKAN_USE_VOLK
 # - make <volk.h> visible to imgui by adding include directory /Extern/volk
@@ -73,6 +83,7 @@ target_include_directories(vise_application PRIVATE
 	${glm_SOURCE_DIR}
 	${imgui_SOURCE_DIR}
 	${imgui_SOURCE_DIR}/backends
+	${CMAKE_CURRENT_SOURCE_DIR}/../Extern/tinygltf
 )
 
 # we will include <imgui_impl_vulkan.h> in Application.cpp
@@ -80,7 +91,7 @@ target_compile_definitions(vise_application PRIVATE
 	IMGUI_IMPL_VULKAN_USE_VOLK
 )
 
-target_link_libraries(vise_application PRIVATE vise stb imgui glfw)
+target_link_libraries(vise_application PRIVATE vise stb tinygltf imgui glfw)
 
 # build examples
 
