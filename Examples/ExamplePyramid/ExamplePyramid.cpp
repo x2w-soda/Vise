@@ -115,7 +115,7 @@ ExamplePyramid::ExamplePyramid(VIBackend backend)
 	vboI.usage = VI_BUFFER_USAGE_TRANSFER_DST_BIT;
 	vboI.properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 	vboI.size = sizeof(vertices);
-	mVBO = vi_util_create_buffer_staged(mDevice, &vboI, vertices);
+	mVBO = CreateBufferStaged(mDevice, &vboI, vertices);
 
 	uint32_t indices[] = { 0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1 };
 
@@ -124,7 +124,7 @@ ExamplePyramid::ExamplePyramid(VIBackend backend)
 	iboI.usage = VI_BUFFER_USAGE_TRANSFER_DST_BIT;
 	iboI.properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 	iboI.size = sizeof(indices);
-	mIBO = vi_util_create_buffer_staged(mDevice, &iboI, indices);
+	mIBO = CreateBufferStaged(mDevice, &iboI, indices);
 
 	std::array<VISetPoolResource, 1> resources;
 	resources[0].type = VI_SET_BINDING_TYPE_UNIFORM_BUFFER;

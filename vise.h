@@ -541,9 +541,4 @@ VI_API VkImageView vi_image_unwrap_view(VIImage image);
 VI_API VkSampler vi_image_unwrap_sampler(VIImage image);
 VI_API uint32_t vi_image_unwrap_gl(VIImage image);
 
-// TODO: this should probably be done by user
-VI_API VIBuffer vi_util_create_buffer_staged(VIDevice device, VIBufferInfo* info, void* data);
-VI_API VIImage vi_util_create_image_staged(VIDevice device, VIImageInfo* info, void* data, VkImageLayout image_layout);
-VI_API void vi_util_cmd_image_layout_transition(VICommand cmd, VIImage image, VkImageLayout old_layout, VkImageLayout new_layout);
-
 #endif // VISE_H

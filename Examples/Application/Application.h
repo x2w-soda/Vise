@@ -117,6 +117,10 @@ public:
 		return sInstance;
 	}
 
+	// example on how to upload data to device local memory via staging buffers
+	VIBuffer CreateBufferStaged(VIDevice device, const VIBufferInfo* info, const void* data);
+	VIImage CreateImageStaged(VIDevice device, const VIImageInfo* info, const void* data, VkImageLayout image_layout);
+
 protected:
 
 	void NewFrame();
@@ -124,6 +128,9 @@ protected:
 	void CameraToggleCapture();
 	bool CameraIsCaptured();
 	void PrintDeviceLimits(const VIDeviceLimits& limits);
+
+	// image layout transition via image memory barrier
+	void CmdImageLayoutTransition(VICommand cmd, VIImage image, VkImageLayout old_layout, VkImageLayout new_layout);
 
 	// example on how to integrate Dear ImGui with both backends of Vise
 	void ImGuiNewFrame();

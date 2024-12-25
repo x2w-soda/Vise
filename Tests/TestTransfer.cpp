@@ -140,7 +140,7 @@ void TestTransfer::TestFullCopy()
 	VIImageInfo imageI = MakeImageInfo2D(VI_FORMAT_RGBA8, PATTERN_SIZE, PATTERN_SIZE, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	imageI.usage = VI_IMAGE_USAGE_TRANSFER_SRC_BIT | VI_IMAGE_USAGE_TRANSFER_DST_BIT | VI_IMAGE_USAGE_STORAGE_BIT;
 	imageI.sampler_filter = VI_FILTER_NEAREST;
-	image1 = vi_util_create_image_staged(mDevice, &imageI, mPattern, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	image1 = CreateImageStaged(mDevice, &imageI, mPattern, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
 	imageI.usage = VI_IMAGE_USAGE_TRANSFER_SRC_BIT | VI_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 	image2 = vi_create_image(mDevice, &imageI);
@@ -183,7 +183,7 @@ void TestTransfer::TestFullCopy()
 
 		// transfer from Buffer2 to Image2
 		vi_cmd_pipeline_barrier_memory(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 1, &barrier);
-		vi_util_cmd_image_layout_transition(cmd, image2, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		CmdImageLayoutTransition(cmd, image2, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 		vi_cmd_copy_buffer_to_image(cmd, buffer2, image2, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bufferImageRegion);
 
 		VkImageCopy imageRegion{};
@@ -195,12 +195,12 @@ void TestTransfer::TestFullCopy()
 
 		// transfer from Image2 to Image3
 		vi_cmd_pipeline_barrier_memory(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 1, &barrier);
-		vi_util_cmd_image_layout_transition(cmd, image2, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-		vi_util_cmd_image_layout_transition(cmd, image3, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		CmdImageLayoutTransition(cmd, image2, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+		CmdImageLayoutTransition(cmd, image3, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 		vi_cmd_copy_image(cmd, image2, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image3, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageRegion);
 
-		vi_util_cmd_image_layout_transition(cmd, image2, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-		vi_util_cmd_image_layout_transition(cmd, image3, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		CmdImageLayoutTransition(cmd, image2, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		CmdImageLayoutTransition(cmd, image3, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 		// render Image2 and Image3
 		VkClearValue clear_color = MakeClearColor(0.0f, 0.0f, 0.0f, 1.0f);

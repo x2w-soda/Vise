@@ -88,7 +88,7 @@ ExampleTriangle::ExampleTriangle(VIBackend backend)
 	vboI.usage = VI_BUFFER_USAGE_TRANSFER_DST_BIT;
 	vboI.properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 	vboI.size = sizeof(vertices);
-	mVBO = vi_util_create_buffer_staged(mDevice, &vboI, vertices);
+	mVBO = CreateBufferStaged(mDevice, &vboI, vertices);
 
 	uint32_t family = vi_device_get_graphics_family_index(mDevice);
 	mCmdPool = vi_create_command_pool(mDevice, family, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);

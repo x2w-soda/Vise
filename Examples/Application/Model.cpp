@@ -1,4 +1,5 @@
 #include "Model.h"
+#include "Application.h"
 #include <glm/gtc/matrix_transform.hpp>
 
 Mesh::Mesh()
@@ -103,17 +104,17 @@ std::shared_ptr<Mesh> Mesh::GenerateBox(VIDevice device, const glm::vec3& halfEx
         indices.push_back(idxBase + 0);
         idxBase += 4;
     }
-
+    Application* app = Application::Get();
 	VIBufferInfo bufferI;
 	bufferI.type = VI_BUFFER_TYPE_VERTEX;
 	bufferI.usage = VI_BUFFER_USAGE_TRANSFER_DST_BIT;
 	bufferI.size = sizeof(MeshVertex) * vertices.size();
 	bufferI.properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-	mesh->VBO = vi_util_create_buffer_staged(device, &bufferI, vertices.data());
+	mesh->VBO = app->CreateBufferStaged(device, &bufferI, vertices.data());
 
 	bufferI.type = VI_BUFFER_TYPE_INDEX;
 	bufferI.size = sizeof(uint32_t) * indices.size();
-	mesh->IBO = vi_util_create_buffer_staged(device, &bufferI, indices.data());
+	mesh->IBO = app->CreateBufferStaged(device, &bufferI, indices.data());
 
     mesh->IndexCount = indices.size(); // 36
 
@@ -193,16 +194,18 @@ std::shared_ptr<Mesh> Mesh::GenerateSphereMesh(VIDevice device, float radius, co
         }
     }
 
+    Application* app = Application::Get();
+
     VIBufferInfo bufferI;
     bufferI.type = VI_BUFFER_TYPE_VERTEX;
     bufferI.usage = VI_BUFFER_USAGE_TRANSFER_DST_BIT;
     bufferI.size = sizeof(MeshVertex) * vertices.size();
     bufferI.properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    mesh->VBO = vi_util_create_buffer_staged(device, &bufferI, vertices.data());
+    mesh->VBO = app->CreateBufferStaged(device, &bufferI, vertices.data());
 
     bufferI.type = VI_BUFFER_TYPE_INDEX;
     bufferI.size = sizeof(uint32_t) * indices.size();
-    mesh->IBO = vi_util_create_buffer_staged(device, &bufferI, indices.data());
+    mesh->IBO = app->CreateBufferStaged(device, &bufferI, indices.data());
 
     mesh->IndexCount = indices.size();
 

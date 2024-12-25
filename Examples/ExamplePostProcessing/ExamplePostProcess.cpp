@@ -236,7 +236,7 @@ ExamplePostProcess::ExamplePostProcess(VIBackend backend)
 	vboI.usage = VI_BUFFER_USAGE_TRANSFER_DST_BIT;
 	vboI.properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 	vboI.size = sizeof(quadVertices);
-	mQuadVBO = vi_util_create_buffer_staged(mDevice, &vboI, quadVertices);
+	mQuadVBO = CreateBufferStaged(mDevice, &vboI, quadVertices);
 
 	uint32_t indices[] = { 0, 1, 2, 2, 3, 0 };
 
@@ -245,7 +245,7 @@ ExamplePostProcess::ExamplePostProcess(VIBackend backend)
 	iboI.usage = VI_BUFFER_USAGE_TRANSFER_DST_BIT;
 	iboI.properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 	iboI.size = sizeof(indices);
-	mQuadIBO = vi_util_create_buffer_staged(mDevice, &iboI, indices);
+	mQuadIBO = CreateBufferStaged(mDevice, &iboI, indices);
 
 	std::array<VISetPoolResource, 2> resources;
 	resources[0].type = VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER;
