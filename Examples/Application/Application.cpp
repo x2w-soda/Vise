@@ -8,6 +8,311 @@
 
 Application* Application::sInstance = nullptr;
 
+VISetLayout CreateSetLayout(VIDevice device, const std::initializer_list<VISetBinding>& list)
+{
+	VISetLayoutInfo info;
+	info.binding_count = list.size();
+	info.bindings = list.begin();
+
+	return vi_create_set_layout(device, &info);
+}
+
+VISetPool CreateSetPool(VIDevice device, uint32_t max_sets, const std::initializer_list<VISetPoolResource>& list)
+{
+	VISetPoolInfo info;
+	info.max_set_count = max_sets;
+	info.resource_count = list.size();
+	info.resources = list.begin();
+
+	return vi_create_set_pool(device, &info);
+}
+
+VIPipelineLayout CreatePipelineLayout(VIDevice device, const std::initializer_list<VISetLayout>& list, uint32_t push_constant_size)
+{
+	VIPipelineLayoutInfo info;
+	info.set_layout_count = list.size();
+	info.set_layouts = list.begin();
+	info.push_constant_size = push_constant_size;
+
+	return vi_create_pipeline_layout(device, &info);
+}
+
+VIModule CreateModule(VIDevice device, VIPipelineLayout layout, VIModuleType type, const char* vise_glsl)
+{
+	VIModuleInfo info;
+	info.pipeline_layout = layout;
+	info.type = type;
+	info.vise_glsl = vise_glsl;
+
+	return vi_create_module(device, &info);
+}
+
+VISet AllocAndUpdateSet(VIDevice device, VISetPool pool, VISetLayout layout, const std::initializer_list<VISetUpdateInfo>& updates)
+{
+	VISet set = vi_alloc_set(device, pool, layout);
+	vi_set_update(set, updates.size(), updates.begin());
+
+	return set;
+}
+
+VkViewport MakeViewport(float width, float height)
+{
+	VkViewport viewport;
+	viewport.x = 0;
+	viewport.y = 0;
+	viewport.width = width;
+	viewport.height = height;
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+
+	return viewport;
+}
+
+VkRect2D MakeScissor(uint32_t width, uint32_t height)
+{
+	VkRect2D scissor;
+	scissor.offset.x = 0;
+	scissor.offset.y = 0;
+	scissor.extent.width = width;
+	scissor.extent.height = height;
+
+	return scissor;
+}
+
+VkClearValue MakeClearDepthStencil(float depth, uint32_t stencil)
+{
+	VkClearValue value;
+	value.depthStencil.depth = depth;
+	value.depthStencil.stencil = stencil;
+
+	return value;
+}
+
+VkClearValue MakeClearColor(float r, float g, float b, float a)
+{
+	VkClearValue value;
+	value.color.float32[0] = r;
+	value.color.float32[1] = g;
+	value.color.float32[2] = b;
+	value.color.float32[3] = a;
+
+	return value;
+}
+
+VIImageInfo MakeImageInfo2D(VIFormat format, uint32_t width, uint32_t height, VkMemoryPropertyFlags properties)
+{
+	VIImageInfo imageI;
+	imageI.type = VI_IMAGE_TYPE_2D;
+	imageI.usage = 0;
+	imageI.layers = 1;
+	imageI.format = format;
+	imageI.width = width;
+	imageI.height = height;
+	imageI.properties = properties;
+	imageI.sampler_address_mode = VI_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	imageI.sampler_filter = VI_FILTER_LINEAR;
+
+	return imageI;
+}
+
+VIPassColorAttachment MakePassColorAttachment(VIFormat format, VkAttachmentLoadOp load_op, VkAttachmentStoreOp store_op, VkImageLayout initial_layout, VkImageLayout final_layout)
+{
+	VIPassColorAttachment pass_color_attachment;
+	pass_color_attachment.color_format = format;
+	pass_color_attachment.color_load_op = load_op;
+	pass_color_attachment.color_store_op = store_op;
+	pass_color_attachment.initial_layout = initial_layout;
+	pass_color_attachment.final_layout = final_layout;
+
+	return pass_color_attachment;
+}
+
+VkSubpassDependency MakeSubpassDependency(
+	uint32_t src_subpass, VkPipelineStageFlags src_stages, VkAccessFlags src_access,
+	uint32_t dst_subpass, VkPipelineStageFlags dst_stages, VkAccessFlags dst_access)
+{
+	VkSubpassDependency dependency;
+	dependency.srcSubpass = src_subpass;
+	dependency.dstSubpass = dst_subpass;
+	dependency.srcAccessMask = src_access;
+	dependency.dstAccessMask = dst_access;
+	dependency.srcStageMask = src_stages;
+	dependency.dstStageMask = dst_stages;
+	dependency.dependencyFlags = 0;
+
+	return dependency;
+}
+
+VkBufferImageCopy MakeBufferImageCopy2D(VkImageAspectFlags aspect, uint32_t width, uint32_t height)
+{
+	VkBufferImageCopy region;
+	region.bufferImageHeight = 0;
+	region.bufferOffset = 0;
+	region.bufferRowLength = 0;
+	region.imageExtent = { width, height, 1 };
+	region.imageOffset = { 0, 0, 0 };
+	region.imageSubresource.aspectMask = aspect;
+	region.imageSubresource.layerCount = 1;
+	region.imageSubresource.baseArrayLayer = 0;
+	region.imageSubresource.mipLevel = 0;
+
+	return region;
+}
+
+VIBuffer CreateBufferStaged(VIDevice device, const VIBufferInfo* info, const void* data)
+{
+	assert(info->usage & VI_BUFFER_USAGE_TRANSFER_DST_BIT);
+	assert(info->properties & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+	VIBufferInfo stagingBufferI;
+	stagingBufferI.type = info->type;
+	stagingBufferI.size = info->size;
+	stagingBufferI.usage = VI_BUFFER_USAGE_TRANSFER_SRC_BIT;
+	stagingBufferI.properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+	VIBuffer srcBuffer = vi_create_buffer(device, &stagingBufferI);
+	VIBuffer dstBuffer = vi_create_buffer(device, info);
+
+	vi_buffer_map(srcBuffer);
+	vi_buffer_map_write(srcBuffer, 0, info->size, data);
+	vi_buffer_unmap(srcBuffer);
+
+	uint32_t family = vi_device_get_graphics_family_index(device);
+	VICommandPool pool = vi_create_command_pool(device, family, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+	VICommand cmd = vi_alloc_command(device, pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+	vi_begin_command(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	{
+		VkBufferCopy region;
+		region.size = info->size;
+		region.srcOffset = 0;
+		region.dstOffset = 0;
+		vi_cmd_copy_buffer(cmd, srcBuffer, dstBuffer, 1, &region);
+	}
+	vi_end_command(cmd);
+
+	VISubmitInfo submitI{};
+	submitI.cmd_count = 1;
+	submitI.cmds = &cmd;
+	VIQueue queue = vi_device_get_graphics_queue(device);
+	vi_queue_submit(queue, 1, &submitI, VI_NULL);
+	vi_queue_wait_idle(queue);
+	vi_free_command(device, cmd);
+	vi_destroy_command_pool(device, pool);
+
+	vi_destroy_buffer(device, srcBuffer);
+
+	return dstBuffer;
+}
+
+VIImage CreateImageStaged(VIDevice device, const VIImageInfo* info, const void* data, VkImageLayout image_layout)
+{
+	assert(info->format == VI_FORMAT_RGBA8);
+	assert(info->usage & VI_IMAGE_USAGE_TRANSFER_DST_BIT);
+	assert(info->properties & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+	size_t texelSize = 4; // TODO: query
+	size_t imageSize = info->width * info->height * texelSize * info->layers;
+
+	VIBufferInfo stagingBufferI;
+	stagingBufferI.type = VI_BUFFER_TYPE_TRANSFER;
+	stagingBufferI.size = imageSize;
+	stagingBufferI.usage = VI_BUFFER_USAGE_TRANSFER_SRC_BIT;
+	stagingBufferI.properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+	VIBuffer srcBuffer = vi_create_buffer(device, &stagingBufferI);
+	VIImage dstImage = vi_create_image(device, info);
+
+	vi_buffer_map(srcBuffer);
+	vi_buffer_map_write(srcBuffer, 0, imageSize, data);
+	vi_buffer_unmap(srcBuffer);
+
+	uint32_t family = vi_device_get_graphics_family_index(device);
+	VICommandPool pool = vi_create_command_pool(device, family, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+	VICommand cmd = vi_alloc_command(device, pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+	vi_begin_command(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	{
+		CmdImageLayoutTransition(cmd, dstImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, info->layers);
+
+		VkBufferImageCopy region = MakeBufferImageCopy2D(VK_IMAGE_ASPECT_COLOR_BIT, info->width, info->height);
+		region.imageSubresource.layerCount = info->layers;
+		vi_cmd_copy_buffer_to_image(cmd, srcBuffer, dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+		CmdImageLayoutTransition(cmd, dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, image_layout, info->layers);
+	}
+	vi_end_command(cmd);
+
+	VISubmitInfo submitI{};
+	submitI.cmds = &cmd;
+	submitI.cmd_count = 1;
+	VIQueue queue = vi_device_get_graphics_queue(device);
+	vi_queue_submit(queue, 1, &submitI, VI_NULL);
+	vi_queue_wait_idle(queue);
+	vi_free_command(device, cmd);
+	vi_destroy_command_pool(device, pool);
+
+	vi_destroy_buffer(device, srcBuffer);
+
+	return dstImage;
+}
+
+void CmdImageLayoutTransition(VICommand cmd, VIImage image, VkImageLayout old_layout, VkImageLayout new_layout, uint32_t layers)
+{
+	// TODO: image aspect + mipmap level + array layers
+	VIImageMemoryBarrier barrier{};
+	barrier.old_layout = old_layout;
+	barrier.new_layout = new_layout;
+	barrier.src_family_index = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dst_family_index = VK_QUEUE_FAMILY_IGNORED;
+	barrier.image = image;
+	barrier.subresource_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	barrier.subresource_range.baseMipLevel = 0;
+	barrier.subresource_range.levelCount = 1;
+	barrier.subresource_range.baseArrayLayer = 0;
+	barrier.subresource_range.layerCount = layers;
+
+	VkPipelineStageFlags src_stages = 0;
+	VkPipelineStageFlags dst_stages = 0;
+
+	if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+	{
+		src_stages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+		dst_stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		barrier.src_access = 0;
+		barrier.dst_access = VK_ACCESS_TRANSFER_WRITE_BIT;
+	}
+	else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+	{
+		src_stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		dst_stages = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		barrier.src_access = VK_ACCESS_TRANSFER_WRITE_BIT;
+		barrier.dst_access = VK_ACCESS_SHADER_READ_BIT;
+	}
+	else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+	{
+		src_stages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+		dst_stages = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		barrier.src_access = 0;
+		barrier.dst_access = VK_ACCESS_SHADER_READ_BIT;
+	}
+	else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_GENERAL)
+	{
+		src_stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		dst_stages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+		barrier.src_access = VK_ACCESS_TRANSFER_WRITE_BIT;
+		barrier.dst_access = 0;
+	}
+	else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+	{
+		src_stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		dst_stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		barrier.src_access = VK_ACCESS_TRANSFER_WRITE_BIT;
+		barrier.dst_access = VK_ACCESS_TRANSFER_READ_BIT;
+	}
+	else assert(0 && "unable to derive image memory barrier from new and old image layouts");
+
+	vi_cmd_pipeline_barrier_image_memory(cmd, src_stages, dst_stages, 0, 1, &barrier);
+}
+
 Application::Application(const char* name, VIBackend backend, bool create_visible)
 	: mName(name), mBackend(backend)
 {
@@ -269,157 +574,6 @@ void Application::ImGuiVulkanRender(VICommand cmd)
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), vi_command_unwrap(cmd));
 }
 
-VISetLayout Application::CreateSetLayout(const std::initializer_list<VISetBinding>& list)
-{
-	VISetLayoutInfo info;
-	info.binding_count = list.size();
-	info.bindings = list.begin();
-
-	return vi_create_set_layout(mDevice, &info);
-}
-
-VISetPool Application::CreateSetPool(uint32_t max_sets, const std::initializer_list<VISetPoolResource>& list)
-{
-	VISetPoolInfo info;
-	info.max_set_count = max_sets;
-	info.resource_count = list.size();
-	info.resources = list.begin();
-
-	return vi_create_set_pool(mDevice, &info);
-}
-
-VIPipelineLayout Application::CreatePipelineLayout(const std::initializer_list<VISetLayout>& list, uint32_t push_constant_size)
-{
-	VIPipelineLayoutInfo info;
-	info.set_layout_count = list.size();
-	info.set_layouts = list.begin();
-	info.push_constant_size = push_constant_size;
-
-	return vi_create_pipeline_layout(mDevice, &info);
-}
-
-VIModule Application::CreateModule(VIPipelineLayout layout, VIModuleType type, const char* vise_glsl)
-{
-	VIModuleInfo info;
-	info.pipeline_layout = layout;
-	info.type = type;
-	info.vise_glsl = vise_glsl;
-
-	return vi_create_module(mDevice, &info);
-}
-
-VISet Application::AllocAndUpdateSet(VISetPool pool, VISetLayout layout, const std::initializer_list<VISetUpdateInfo>& updates)
-{
-	VISet set = vi_alloc_set(mDevice, pool, layout);
-	vi_set_update(set, updates.size(), updates.begin());
-
-	return set;
-}
-
-VkViewport Application::MakeViewport(float width, float height)
-{
-	VkViewport viewport;
-	viewport.x = 0;
-	viewport.y = 0;
-	viewport.width = width;
-	viewport.height = height;
-	viewport.minDepth = 0.0f;
-	viewport.maxDepth = 1.0f;
-
-	return viewport;
-}
-
-VkRect2D Application::MakeScissor(uint32_t width, uint32_t height)
-{
-	VkRect2D scissor;
-	scissor.offset.x = 0;
-	scissor.offset.y = 0;
-	scissor.extent.width = width;
-	scissor.extent.height = height;
-
-	return scissor;
-}
-
-VkClearValue Application::MakeClearDepthStencil(float depth, uint32_t stencil)
-{
-	VkClearValue value;
-	value.depthStencil.depth = depth;
-	value.depthStencil.stencil = stencil;
-
-	return value;
-}
-
-VkClearValue Application::MakeClearColor(float r, float g, float b, float a)
-{
-	VkClearValue value;
-	value.color.float32[0] = r;
-	value.color.float32[1] = g;
-	value.color.float32[2] = b;
-	value.color.float32[3] = a;
-
-	return value;
-}
-
-VIImageInfo Application::MakeImageInfo2D(VIFormat format, uint32_t width, uint32_t height, VkMemoryPropertyFlags properties)
-{
-	VIImageInfo imageI;
-	imageI.type = VI_IMAGE_TYPE_2D;
-	imageI.usage = 0;
-	imageI.layers = 1;
-	imageI.format = format;
-	imageI.width = width;
-	imageI.height = height;
-	imageI.properties = properties;
-	imageI.sampler_address_mode = VI_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	imageI.sampler_filter = VI_FILTER_LINEAR;
-
-	return imageI;
-}
-
-VIPassColorAttachment Application::MakePassColorAttachment(VIFormat format, VkAttachmentLoadOp load_op, VkAttachmentStoreOp store_op, VkImageLayout initial_layout, VkImageLayout final_layout)
-{
-	VIPassColorAttachment pass_color_attachment;
-	pass_color_attachment.color_format = format;
-	pass_color_attachment.color_load_op = load_op;
-	pass_color_attachment.color_store_op = store_op;
-	pass_color_attachment.initial_layout = initial_layout;
-	pass_color_attachment.final_layout = final_layout;
-
-	return pass_color_attachment;
-}
-
-VkSubpassDependency Application::MakeSubpassDependency(
-	uint32_t src_subpass, VkPipelineStageFlags src_stages, VkAccessFlags src_access,
-	uint32_t dst_subpass, VkPipelineStageFlags dst_stages, VkAccessFlags dst_access)
-{
-	VkSubpassDependency dependency;
-	dependency.srcSubpass = src_subpass;
-	dependency.dstSubpass = dst_subpass;
-	dependency.srcAccessMask = src_access;
-	dependency.dstAccessMask = dst_access;
-	dependency.srcStageMask = src_stages;
-	dependency.dstStageMask = dst_stages;
-	dependency.dependencyFlags = 0;
-
-	return dependency;
-}
-
-VkBufferImageCopy Application::MakeBufferImageCopy2D(VkImageAspectFlags aspect, uint32_t width, uint32_t height)
-{
-	VkBufferImageCopy region;
-	region.bufferImageHeight = 0;
-	region.bufferOffset = 0;
-	region.bufferRowLength = 0;
-	region.imageExtent = { width, height, 1 };
-	region.imageOffset = { 0, 0, 0 };
-	region.imageSubresource.aspectMask = aspect;
-	region.imageSubresource.layerCount = 1;
-	region.imageSubresource.baseArrayLayer = 0;
-	region.imageSubresource.mipLevel = 0;
-
-	return region;
-}
-
 void Application::PrintDeviceLimits(const VIDeviceLimits& limits)
 {
 	printf("== vise device limits (%s):\n", mBackend == VI_BACKEND_VULKAN ? "Vulkan" : "OpenGL");
@@ -428,158 +582,4 @@ void Application::PrintDeviceLimits(const VIDeviceLimits& limits)
 	printf(" - max compute workgroup count (%d, %d, %d)\n", (int)limits.max_compute_workgroup_count[0], (int)limits.max_compute_workgroup_count[1], (int)limits.max_compute_workgroup_count[2]);
 	printf(" - max compute workgroup size  (%d, %d, %d)\n", (int)limits.max_compute_workgroup_size[0], (int)limits.max_compute_workgroup_size[1], (int)limits.max_compute_workgroup_size[2]);
 	printf(" - max compute workgroup invocations %d\n", (int)limits.max_compute_workgroup_invocations);
-}
-
-VIBuffer Application::CreateBufferStaged(VIDevice device, const VIBufferInfo* info, const void* data)
-{
-	assert(info->usage & VI_BUFFER_USAGE_TRANSFER_DST_BIT);
-	assert(info->properties & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-	VIBufferInfo stagingBufferI;
-	stagingBufferI.type = info->type;
-	stagingBufferI.size = info->size;
-	stagingBufferI.usage = VI_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	stagingBufferI.properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-	VIBuffer srcBuffer = vi_create_buffer(device, &stagingBufferI);
-	VIBuffer dstBuffer = vi_create_buffer(device, info);
-
-	vi_buffer_map(srcBuffer);
-	vi_buffer_map_write(srcBuffer, 0, info->size, data);
-	vi_buffer_unmap(srcBuffer);
-
-	uint32_t family = vi_device_get_graphics_family_index(device);
-	VICommandPool pool = vi_create_command_pool(device, family, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
-	VICommand cmd = vi_alloc_command(device, pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
-	vi_begin_command(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	{
-		VkBufferCopy region;
-		region.size = info->size;
-		region.srcOffset = 0;
-		region.dstOffset = 0;
-		vi_cmd_copy_buffer(cmd, srcBuffer, dstBuffer, 1, &region);
-	}
-	vi_end_command(cmd);
-
-	VISubmitInfo submitI{};
-	submitI.cmd_count = 1;
-	submitI.cmds = &cmd;
-	VIQueue queue = vi_device_get_graphics_queue(device);
-	vi_queue_submit(queue, 1, &submitI, VI_NULL);
-	vi_queue_wait_idle(queue);
-	vi_free_command(device, cmd);
-	vi_destroy_command_pool(device, pool);
-
-	vi_destroy_buffer(device, srcBuffer);
-
-	return dstBuffer;
-}
-
-VIImage Application::CreateImageStaged(VIDevice device, const VIImageInfo* info, const void* data, VkImageLayout image_layout)
-{
-	assert(info->format == VI_FORMAT_RGBA8);
-	assert(info->usage & VI_IMAGE_USAGE_TRANSFER_DST_BIT);
-	assert(info->properties & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-	size_t texelSize = 4; // TODO: query
-	size_t imageSize = info->width * info->height * texelSize * info->layers;
-
-	VIBufferInfo stagingBufferI;
-	stagingBufferI.type = VI_BUFFER_TYPE_TRANSFER;
-	stagingBufferI.size = imageSize;
-	stagingBufferI.usage = VI_BUFFER_USAGE_TRANSFER_SRC_BIT;
-	stagingBufferI.properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-	VIBuffer srcBuffer = vi_create_buffer(device, &stagingBufferI);
-	VIImage dstImage = vi_create_image(device, info);
-
-	vi_buffer_map(srcBuffer);
-	vi_buffer_map_write(srcBuffer, 0, imageSize, data);
-	vi_buffer_unmap(srcBuffer);
-
-	uint32_t family = vi_device_get_graphics_family_index(device);
-	VICommandPool pool = vi_create_command_pool(device, family, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
-	VICommand cmd = vi_alloc_command(device, pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
-	vi_begin_command(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	{
-		CmdImageLayoutTransition(cmd, dstImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, info->layers);
-
-		VkBufferImageCopy region = MakeBufferImageCopy2D(VK_IMAGE_ASPECT_COLOR_BIT, info->width, info->height);
-		region.imageSubresource.layerCount = info->layers;
-		vi_cmd_copy_buffer_to_image(cmd, srcBuffer, dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-
-		CmdImageLayoutTransition(cmd, dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, image_layout, info->layers);
-	}
-	vi_end_command(cmd);
-
-	VISubmitInfo submitI{};
-	submitI.cmds = &cmd;
-	submitI.cmd_count = 1;
-	VIQueue queue = vi_device_get_graphics_queue(mDevice);
-	vi_queue_submit(queue, 1, &submitI, VI_NULL);
-	vi_queue_wait_idle(queue);
-	vi_free_command(device, cmd);
-	vi_destroy_command_pool(device, pool);
-
-	vi_destroy_buffer(device, srcBuffer);
-
-	return dstImage;
-}
-
-void Application::CmdImageLayoutTransition(VICommand cmd, VIImage image, VkImageLayout old_layout, VkImageLayout new_layout, uint32_t layers)
-{
-	// TODO: image aspect + mipmap level + array layers
-	VIImageMemoryBarrier barrier{};
-	barrier.old_layout = old_layout;
-	barrier.new_layout = new_layout;
-	barrier.src_family_index = VK_QUEUE_FAMILY_IGNORED;
-	barrier.dst_family_index = VK_QUEUE_FAMILY_IGNORED;
-	barrier.image = image;
-	barrier.subresource_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	barrier.subresource_range.baseMipLevel = 0;
-	barrier.subresource_range.levelCount = 1;
-	barrier.subresource_range.baseArrayLayer = 0;
-	barrier.subresource_range.layerCount = layers;
-
-	VkPipelineStageFlags src_stages = 0;
-	VkPipelineStageFlags dst_stages = 0;
-
-	if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
-	{
-		src_stages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-		dst_stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
-		barrier.src_access = 0;
-		barrier.dst_access = VK_ACCESS_TRANSFER_WRITE_BIT;
-	}
-	else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-	{
-		src_stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
-		dst_stages = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-		barrier.src_access = VK_ACCESS_TRANSFER_WRITE_BIT;
-		barrier.dst_access = VK_ACCESS_SHADER_READ_BIT;
-	}
-	else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-	{
-		src_stages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-		dst_stages = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-		barrier.src_access = 0;
-		barrier.dst_access = VK_ACCESS_SHADER_READ_BIT;
-	}
-	else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_GENERAL)
-	{
-		src_stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
-		dst_stages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-		barrier.src_access = VK_ACCESS_TRANSFER_WRITE_BIT;
-		barrier.dst_access = 0;
-	}
-	else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
-	{
-		src_stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
-		dst_stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
-		barrier.src_access = VK_ACCESS_TRANSFER_WRITE_BIT;
-		barrier.dst_access = VK_ACCESS_TRANSFER_READ_BIT;
-	}
-	else assert(0 && "unable to derive image memory barrier from new and old image layouts");
-
-	vi_cmd_pipeline_barrier_image_memory(cmd, src_stages, dst_stages, 0, 1, &barrier);
 }

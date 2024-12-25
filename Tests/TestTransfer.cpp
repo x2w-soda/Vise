@@ -52,11 +52,11 @@ TestTransfer::TestTransfer(VIBackend backend)
 {
 	VISetLayoutInfo setLayoutI;
 	setLayoutI.binding_count = 1;
-	mSetLayout = CreateSetLayout({
+	mSetLayout = CreateSetLayout(mDevice, {
 		{ VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 0, 1 },
 	});
 
-	mSetPool = CreateSetPool(2, {
+	mSetPool = CreateSetPool(mDevice, 2, {
 		{ VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 2 },
 	});
 
@@ -156,8 +156,8 @@ void TestTransfer::TestFullCopy()
 	buffer1 = vi_create_buffer(mDevice, &bufferI);
 	buffer2 = vi_create_buffer(mDevice, &bufferI);
 
-	VISet setImage2 = AllocAndUpdateSet(mSetPool, mSetLayout, { {0, VI_NULL, image2 } });
-	VISet setImage3 = AllocAndUpdateSet(mSetPool, mSetLayout, { {0, VI_NULL, image3 } });
+	VISet setImage2 = AllocAndUpdateSet(mDevice, mSetPool, mSetLayout, { {0, VI_NULL, image2 } });
+	VISet setImage3 = AllocAndUpdateSet(mDevice, mSetPool, mSetLayout, { {0, VI_NULL, image3 } });
 
 	VICommand cmd = vi_alloc_command(mDevice, mCmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 	vi_begin_command(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);

@@ -75,12 +75,12 @@ void main()
 TestDriver::TestDriver(VIBackend backend)
 	: Application("Test Driver", backend, false)
 {
-	mMSESetLayout = CreateSetLayout({
+	mMSESetLayout = CreateSetLayout(mDevice, {
 		{ VI_SET_BINDING_TYPE_STORAGE_BUFFER, 0, 1 },
 		{ VI_SET_BINDING_TYPE_STORAGE_IMAGE, 1, 1 },
 		{ VI_SET_BINDING_TYPE_STORAGE_IMAGE, 2, 1 },
 	});
-	mMSEPipelineLayout = CreatePipelineLayout({
+	mMSEPipelineLayout = CreatePipelineLayout(mDevice, {
 		mMSESetLayout
 	});
 
@@ -203,8 +203,8 @@ void TestDriver::MSETest::Init(VIDevice device, VISetPool set_pool, VISetLayout 
 	imageI.sampler_filter = VI_FILTER_LINEAR;
 	imageI.sampler_address_mode = VI_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 	imageI.properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-	Image1 = Application::Get()->CreateImageStaged(device, &imageI, data1, VK_IMAGE_LAYOUT_GENERAL);
-	Image2 = Application::Get()->CreateImageStaged(device, &imageI, data2, VK_IMAGE_LAYOUT_GENERAL);
+	Image1 = CreateImageStaged(device, &imageI, data1, VK_IMAGE_LAYOUT_GENERAL);
+	Image2 = CreateImageStaged(device, &imageI, data2, VK_IMAGE_LAYOUT_GENERAL);
 
 	stbi_image_free(data1);
 	stbi_image_free(data2);
