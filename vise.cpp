@@ -498,6 +498,7 @@ enum GLCommandType
 	GL_COMMAND_TYPE_END_PASS,
 	GL_COMMAND_TYPE_COPY_BUFFER,
 	GL_COMMAND_TYPE_COPY_BUFFER_TO_IMAGE,
+	GL_COMMAND_TYPE_COPY_IMAGE,
 	GL_COMMAND_TYPE_COPY_IMAGE_TO_BUFFER,
 	GL_COMMAND_TYPE_DISPATCH,
 	GL_COMMAND_TYPE_ENUM_COUNT,
@@ -563,6 +564,13 @@ struct GLCommandCopyBuffer
 	std::vector<VkBufferCopy> regions;
 };
 
+struct GLCommandCopyImage
+{
+	VIImage src;
+	VIImage dst;
+	std::vector<VkImageCopy> regions;
+};
+
 struct GLCommandCopyImageToBuffer
 {
 	VIImage image;
@@ -601,6 +609,7 @@ struct GLCommand
 		GLCommandBeginPass begin_pass;
 		GLCommandCopyBuffer copy_buffer;
 		GLCommandCopyBufferToImage copy_buffer_to_image;
+		GLCommandCopyImage copy_image;
 		GLCommandCopyImageToBuffer copy_image_to_buffer;
 		GLCommandDispatch dispatch;
 	};
@@ -685,7 +694,9 @@ static void gl_free_set(VIDevice device, VISet set);
 static void gl_set_update(VISet set, uint32_t update_count, const VISetUpdateInfo* updates);
 static void gl_pipeline_layout_get_remapped_binding(VIPipelineLayout layout, uint32_t set_idx, uint32_t binding_idx, uint32_t* remapped_binding);
 static void gl_copy_buffer(VIBuffer src, VIBuffer dst, uint32_t src_offset, uint32_t dst_offset, uint32_t size);
-static void gl_copy_buffer_to_image(VIBuffer buffer, VIImage image, uint32_t buffer_offset, const VkOffset3D& offset, const VkExtent3D& extent);
+static void gl_copy_buffer_to_image(VIBuffer buffer, VIImage image, uint32_t buffer_offset, const VkOffset3D& image_offset, const VkExtent3D& image_extent);
+static void gl_copy_image(VIImage src, VIImage dst, const VkOffset3D& src_offset, const VkOffset3D& dst_offset, const VkExtent3D& extent);
+static void gl_copy_image_to_buffer(VIImage image, VIBuffer buffer, uint32_t buffer_offset, const VkOffset3D& image_offset, const VkExtent3D& image_extent);
 static GLCommand* gl_append_command(VICommand cmd, GLCommandType type);
 static void gl_reset_command(VIDevice device, VICommand cmd);
 static void gl_cmd_execute(VIDevice device, VICommand cmd);
@@ -704,6 +715,7 @@ static void gl_cmd_execute_begin_pass(VIDevice device, GLCommand* glcmd);
 static void gl_cmd_execute_end_pass(VIDevice device, GLCommand* glcmd);
 static void gl_cmd_execute_copy_buffer(VIDevice device, GLCommand* glcmd);
 static void gl_cmd_execute_copy_buffer_to_image(VIDevice device, GLCommand* glcmd);
+static void gl_cmd_execute_copy_image(VIDevice device, GLCommand* glcmd);
 static void gl_cmd_execute_copy_image_to_buffer(VIDevice device, GLCommand* glcmd);
 static void gl_cmd_execute_dispatch(VIDevice device, GLCommand* glcmd);
 
@@ -769,6 +781,7 @@ static void (*gl_cmd_execute_table[GL_COMMAND_TYPE_ENUM_COUNT])(VIDevice, GLComm
 	gl_cmd_execute_end_pass,
 	gl_cmd_execute_copy_buffer,
 	gl_cmd_execute_copy_buffer_to_image,
+	gl_cmd_execute_copy_image,
 	gl_cmd_execute_copy_image_to_buffer,
 	gl_cmd_execute_dispatch,
 };
@@ -1952,24 +1965,24 @@ static void gl_copy_buffer(VIBuffer src, VIBuffer dst, uint32_t src_offset, uint
 	GL_CHECK();
 }
 
-static void gl_copy_buffer_to_image(VIBuffer buffer, VIImage image, uint32_t buffer_offset, const VkOffset3D& offset, const VkExtent3D& extent)
+static void gl_copy_buffer_to_image(VIBuffer buffer, VIImage image, uint32_t buffer_offset, const VkOffset3D& image_offset, const VkExtent3D& image_extent)
 {
 	VI_ASSERT(image->info.type == VI_IMAGE_TYPE_2D);
-	VI_ASSERT(offset.z == 0 && extent.depth >= 1);
+	VI_ASSERT(image_offset.z == 0 && image_extent.depth >= 1);
 
 	uint32_t texel_size;
 	GLenum internal_format, data_format, data_type;
 	cast_format_gl(image->info.format, &internal_format, &data_format, &data_type, &texel_size);
-	uint32_t access_size = extent.width * extent.height * extent.depth * texel_size;
-	void* data = nullptr;
+	uint32_t access_size = image_extent.width * image_extent.height * image_extent.depth * texel_size;
 
 	VI_ASSERT(buffer_offset + access_size <= buffer->size);
 
-	if (buffer->type == VI_BUFFER_TYPE_NONE)
-		data = buffer->map + buffer_offset;
-	else
+	if (!buffer->map)
+		buffer->map = (uint8_t*)vi_malloc(buffer->size);
+	void* data = buffer->map + buffer_offset;
+
+	if (buffer->type != VI_BUFFER_TYPE_NONE)
 	{
-		data = vi_malloc((size_t)access_size);
 		glBindBuffer(buffer->gl.target, buffer->gl.handle);
 		glGetBufferSubData(buffer->gl.target, buffer_offset, access_size, data);
 	}
@@ -1979,15 +1992,55 @@ static void gl_copy_buffer_to_image(VIBuffer buffer, VIImage image, uint32_t buf
 	if (image->info.type == VI_IMAGE_TYPE_2D)
 	{
 		glBindTexture(GL_TEXTURE_2D, image->gl.handle);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, offset.x, offset.y, extent.width, extent.height, data_format, data_type, data);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, image_offset.x, image_offset.y, image_extent.width, image_extent.height, data_format, data_type, data);
+	}
+	else
+		VI_UNREACHABLE;
+
+	GL_CHECK();
+}
+
+static void gl_copy_image(VIImage src, VIImage dst, const VkOffset3D& src_offset, const VkOffset3D& dst_offset, const VkExtent3D& extent)
+{
+	GLint src_mip_level = 0;
+	GLint dst_mip_level = 0;
+
+	glCopyImageSubData(
+		src->gl.handle, src->gl.target, src_mip_level, src_offset.x, src_offset.y, src_offset.z,
+		dst->gl.handle, dst->gl.target, dst_mip_level, dst_offset.x, dst_offset.y, dst_offset.z,
+		extent.width, extent.height, extent.depth);
+
+	GL_CHECK();
+}
+
+static void gl_copy_image_to_buffer(VIImage image, VIBuffer buffer, uint32_t buffer_offset, const VkOffset3D& image_offset, const VkExtent3D& image_extent)
+{
+	uint32_t texel_size;
+	GLenum internal_format, data_format, data_type;
+	cast_format_gl(image->info.format, &internal_format, &data_format, &data_type, &texel_size);
+	uint32_t access_size = image_extent.width * image_extent.height * image_extent.depth * texel_size;
+	
+	VI_ASSERT(buffer_offset + access_size <= buffer->size);
+
+	if (!buffer->map)
+		buffer->map = (uint8_t*)vi_malloc(buffer->size);
+	void* data = buffer->map + buffer_offset;
+
+	if (image->info.type == VI_IMAGE_TYPE_2D)
+	{
+		glGetTextureSubImage(image->gl.handle, 0, image_offset.x, image_offset.y, image_offset.z, image_extent.width, image_extent.height, image_extent.depth, data_format, data_type, access_size, data);
 	}
 	else
 		VI_UNREACHABLE;
 
 	GL_CHECK();
 
-	if (data != buffer->map)
-		vi_free(data);
+	if (buffer->type == VI_BUFFER_TYPE_NONE)
+		return;
+
+	glBindBuffer(buffer->gl.target, buffer->gl.handle);
+	glBufferSubData(buffer->gl.target, buffer_offset, access_size, data);
+	GL_CHECK();
 }
 
 static GLCommand* gl_append_command(VICommand cmd, GLCommandType type)
@@ -2032,6 +2085,9 @@ static void gl_reset_command(VIDevice device, VICommand cmd)
 			break;
 		case GL_COMMAND_TYPE_COPY_BUFFER_TO_IMAGE:
 			glcmd->copy_buffer_to_image.~GLCommandCopyBufferToImage();
+			break;
+		case GL_COMMAND_TYPE_COPY_IMAGE:
+			glcmd->copy_image.~GLCommandCopyImage();
 			break;
 		case GL_COMMAND_TYPE_COPY_IMAGE_TO_BUFFER:
 			glcmd->copy_image_to_buffer.~GLCommandCopyImageToBuffer();
@@ -2410,24 +2466,36 @@ static void gl_cmd_execute_copy_buffer_to_image(VIDevice device, GLCommand* glcm
 	}
 }
 
+static void gl_cmd_execute_copy_image(VIDevice device, GLCommand* glcmd)
+{
+	VI_ASSERT(glcmd->type == GL_COMMAND_TYPE_COPY_IMAGE);
+
+	VIImage src = glcmd->copy_image.src;
+	VIImage dst = glcmd->copy_image.dst;
+
+	for (const VkImageCopy& region : glcmd->copy_image.regions)
+	{
+		VI_ASSERT(region.srcSubresource.baseArrayLayer == 0 && region.srcSubresource.layerCount == 1 && region.srcSubresource.mipLevel == 0);
+		VI_ASSERT(region.dstSubresource.baseArrayLayer == 0 && region.dstSubresource.layerCount == 1 && region.dstSubresource.mipLevel == 0);
+		
+		gl_copy_image(src, dst, region.srcOffset, region.dstOffset, region.extent);
+	}
+}
+
 static void gl_cmd_execute_copy_image_to_buffer(VIDevice device, GLCommand* glcmd)
 {
 	VI_ASSERT(glcmd->type == GL_COMMAND_TYPE_COPY_IMAGE_TO_BUFFER);
 
 	VIBuffer buffer = glcmd->copy_image_to_buffer.buffer;
 	VIImage image = glcmd->copy_image_to_buffer.image;
-	const std::vector<VkBufferImageCopy>& regions = glcmd->copy_image_to_buffer.regions;
 
-	uint32_t texel_size;
-	GLenum internal_format, data_format, data_type;
-	cast_format_gl(image->info.format, &internal_format, &data_format, &data_type, &texel_size);
+	for (const VkBufferImageCopy& region : glcmd->copy_image_to_buffer.regions)
+	{
+		VI_ASSERT(region.imageSubresource.layerCount == 1);
+		VI_ASSERT(region.imageSubresource.mipLevel == 0);
 
-	VI_ASSERT(regions.size() == 1 && image->info.type == VI_IMAGE_TYPE_2D);
-	VI_ASSERT(regions[0].imageExtent.width * regions[0].imageExtent.height * texel_size == buffer->size);
-	VI_ASSERT(buffer->type == VI_BUFFER_TYPE_NONE && buffer->usage & VI_BUFFER_USAGE_TRANSFER_DST_BIT);
-
-	glBindTexture(image->gl.target, image->gl.handle);
-	glGetTexImage(image->gl.target, 0, data_format, data_type, buffer->map);
+		gl_copy_image_to_buffer(image, buffer, region.bufferOffset, region.imageOffset, region.imageExtent);
+	}
 }
 
 static void gl_cmd_execute_dispatch(VIDevice device, GLCommand* glcmd)
@@ -4686,7 +4754,7 @@ void vi_cmd_opengl_callback(VICommand cmd, void (*callback)(void* data), void* d
 	glcmd->opengl_callback.data = data;
 }
 
-void vi_cmd_copy_buffer(VICommand cmd, VIBuffer src, VIBuffer dst, uint32_t region_count, VkBufferCopy* regions)
+void vi_cmd_copy_buffer(VICommand cmd, VIBuffer src, VIBuffer dst, uint32_t region_count, const VkBufferCopy* regions)
 {
 	if (cmd->device->backend == VI_BACKEND_OPENGL)
 	{
@@ -4702,9 +4770,7 @@ void vi_cmd_copy_buffer(VICommand cmd, VIBuffer src, VIBuffer dst, uint32_t regi
 	vkCmdCopyBuffer(cmd->vk.handle, src->vk.handle, dst->vk.handle, region_count, regions);
 }
 
-// void vi_cmd_copy_image
-
-void vi_cmd_copy_buffer_to_image(VICommand cmd, VIBuffer buffer, VIImage image, VkImageLayout layout, uint32_t region_count, VkBufferImageCopy* regions)
+void vi_cmd_copy_buffer_to_image(VICommand cmd, VIBuffer buffer, VIImage image, VkImageLayout layout, uint32_t region_count, const VkBufferImageCopy* regions)
 {
 	if (cmd->device->backend == VI_BACKEND_OPENGL)
 	{
@@ -4720,7 +4786,26 @@ void vi_cmd_copy_buffer_to_image(VICommand cmd, VIBuffer buffer, VIImage image, 
 	vkCmdCopyBufferToImage(cmd->vk.handle, buffer->vk.handle, image->vk.handle, layout, region_count, regions);
 }
 
-void vi_cmd_copy_image_to_buffer(VICommand cmd, VIImage image, VkImageLayout layout, VIBuffer buffer, uint32_t region_count, VkBufferImageCopy* regions)
+void vi_cmd_copy_image(VICommand cmd, VIImage src, VkImageLayout src_layout, VIImage dst, VkImageLayout dst_layout, uint32_t region_count, const VkImageCopy* regions)
+{
+	VI_ASSERT(src->info.usage & VI_IMAGE_USAGE_TRANSFER_SRC_BIT);
+	VI_ASSERT(dst->info.usage & VI_IMAGE_USAGE_TRANSFER_DST_BIT);
+
+	if (cmd->device->backend == VI_BACKEND_OPENGL)
+	{
+		GLCommand* glcmd = gl_append_command(cmd, GL_COMMAND_TYPE_COPY_IMAGE);
+		new (&glcmd->copy_image) GLCommandCopyImage();
+		glcmd->copy_image.src = src;
+		glcmd->copy_image.dst = dst;
+		glcmd->copy_image.regions.resize(region_count);
+		std::copy(regions, regions + region_count, glcmd->copy_image.regions.begin());
+		return;
+	}
+
+	vkCmdCopyImage(cmd->vk.handle, src->vk.handle, src_layout, dst->vk.handle, dst_layout, region_count, regions);
+}
+
+void vi_cmd_copy_image_to_buffer(VICommand cmd, VIImage image, VkImageLayout layout, VIBuffer buffer, uint32_t region_count, const VkBufferImageCopy* regions)
 {
 	VI_ASSERT(image->info.usage & VI_IMAGE_USAGE_TRANSFER_SRC_BIT);
 
@@ -5371,6 +5456,20 @@ void vi_util_cmd_image_layout_transition(VICommand cmd, VIImage image, VkImageLa
 		dst_stages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 		barrier.src_access = VK_ACCESS_TRANSFER_WRITE_BIT;
 		barrier.dst_access = 0;
+	}
+	else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+	{
+		src_stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		dst_stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		barrier.src_access = VK_ACCESS_TRANSFER_WRITE_BIT;
+		barrier.dst_access = VK_ACCESS_TRANSFER_READ_BIT;
+	}
+	else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+	{
+		src_stages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+		dst_stages = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		barrier.src_access = 0;
+		barrier.dst_access = VK_ACCESS_SHADER_READ_BIT;
 	}
 	else VI_ASSERT(0 && "unable to derive image memory barrier from new and old image layouts");
 

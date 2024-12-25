@@ -3,6 +3,7 @@
 #include <stb_image.h>
 #include <stb_image_write.h>
 #include "TestBuiltins.h"
+#include "TestTransfer.h"
 #include "TestPushConstants.h"
 #include "TestPipelineBlend.h"
 #include "../Examples/Application/Application.h"
@@ -84,7 +85,7 @@ TestDriver::TestDriver(VIBackend backend)
 	});
 
 	VIModuleInfo moduleI;
-	moduleI.type = VI_MODULE_TYPE_COMPUTE_BIT;
+	moduleI.type = VI_MODULE_TYPE_COMPUTE;
 	moduleI.vise_glsl = compute_src;
 	moduleI.pipeline_layout = mMSEPipelineLayout;
 	mMSEModule = vi_create_module(mDevice, &moduleI);
@@ -225,9 +226,9 @@ void TestDriver::MSETest::Init(VIDevice device, VISetPool set_pool, VISetLayout 
 
 	MSESet = vi_alloc_set(device, set_pool, set_layout);
 	std::array<VISetUpdateInfo, 3> set_updates;
-	set_updates[0] = { 0, WGPartialSum, VI_NULL_HANDLE };
-	set_updates[1] = { 1, VI_NULL_HANDLE, Image1 };
-	set_updates[2] = { 2, VI_NULL_HANDLE, Image2 };
+	set_updates[0] = { 0, WGPartialSum, VI_NULL };
+	set_updates[1] = { 1, VI_NULL, Image1 };
+	set_updates[2] = { 2, VI_NULL, Image2 };
 	vi_set_update(MSESet, set_updates.size(), set_updates.data());
 }
 
@@ -250,6 +251,16 @@ int main(int argc, char** argv)
 		TestBuiltins test_builtins(VI_BACKEND_OPENGL);
 		test_builtins.Filename = "glsl_builtins_gl.png";
 		test_builtins.Run();
+	}
+	{
+		TestTransfer test_transfer(VI_BACKEND_VULKAN);
+		test_transfer.Filename = "transfer_vk.png";
+		test_transfer.Run();
+	}
+	{
+		TestTransfer test_transfer(VI_BACKEND_OPENGL);
+		test_transfer.Filename = "transfer_gl.png";
+		test_transfer.Run();
 	}
 	{
 		TestPushConstants test_push_constants(VI_BACKEND_VULKAN);
@@ -276,6 +287,7 @@ int main(int argc, char** argv)
 	// NOTE: without golden images, it is possible that both backends are incorrect but identical renders
 	TestDriver testDriver(VI_BACKEND_VULKAN);
 	testDriver.AddMSETest("glsl_builtins_vk.png", "glsl_builtins_gl.png");
+	testDriver.AddMSETest("transfer_vk.png", "transfer_gl.png");
 	testDriver.AddMSETest("push_constant_vk.png", "push_constant_gl.png");
 	testDriver.AddMSETest("pipeline_blend_vk.png", "pipeline_blend_gl.png");
 	testDriver.Run();

@@ -6,6 +6,8 @@ add_executable(vise_tests
 	TestPushConstants.cpp
 	TestBuiltins.h
 	TestBuiltins.cpp
+	TestTransfer.h
+	TestTransfer.cpp
 	TestPipelineBlend.h
 	TestPipelineBlend.cpp
 )
