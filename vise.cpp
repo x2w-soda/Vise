@@ -693,9 +693,9 @@ static void gl_free_set(VIDevice device, VISet set);
 static void gl_set_update(VISet set, uint32_t update_count, const VISetUpdateInfo* updates);
 static void gl_pipeline_layout_get_remapped_binding(VIPipelineLayout layout, uint32_t set_idx, uint32_t binding_idx, uint32_t* remapped_binding);
 static void gl_copy_buffer(VIBuffer src, VIBuffer dst, uint32_t src_offset, uint32_t dst_offset, uint32_t size);
-static void gl_copy_buffer_to_image(VIBuffer buffer, VIImage image, uint32_t buffer_offset, const VkOffset3D& image_offset, const VkExtent3D& image_extent);
+static void gl_copy_buffer_to_image(VIBuffer buffer, VIImage image, uint32_t buffer_offset, const VkOffset3D& image_offset, const VkExtent3D& image_extent, const VkImageSubresourceLayers& image_subresource);
 static void gl_copy_image(VIImage src, VIImage dst, const VkOffset3D& src_offset, const VkOffset3D& dst_offset, const VkExtent3D& extent);
-static void gl_copy_image_to_buffer(VIImage image, VIBuffer buffer, uint32_t buffer_offset, const VkOffset3D& image_offset, const VkExtent3D& image_extent);
+static void gl_copy_image_to_buffer(VIImage image, VIBuffer buffer, uint32_t buffer_offset, const VkOffset3D& image_offset, const VkExtent3D& image_extent, const VkImageSubresourceLayers& image_subresource);
 static GLCommand* gl_append_command(VICommand cmd, GLCommandType type);
 static void gl_reset_command(VIDevice device, VICommand cmd);
 static void gl_cmd_execute(VIDevice device, VICommand cmd);
@@ -1761,24 +1761,20 @@ static void gl_create_image(VIOpenGL* gl, VIImage image, const VIImageInfo* info
 	GL_CHECK(glCreateTextures(target, 1, &image->gl.handle));
 	glBindTexture(target, image->gl.handle);
 
-	if (target == GL_TEXTURE_2D)
+	if (target == GL_TEXTURE_2D || target == GL_TEXTURE_CUBE_MAP)
 		glTexStorage2D(target, 1, internal_format, info->width, info->height);
-	else if (target == GL_TEXTURE_CUBE_MAP)
-	{
-		glTexStorage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X, 1, internal_format, info->width, info->height);
-		glTexStorage2D(GL_TEXTURE_CUBE_MAP_NEGATIVE_X, 1, internal_format, info->width, info->height);
-		glTexStorage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_Y, 1, internal_format, info->width, info->height);
-		glTexStorage2D(GL_TEXTURE_CUBE_MAP_NEGATIVE_Y, 1, internal_format, info->width, info->height);
-		glTexStorage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_Z, 1, internal_format, info->width, info->height);
-		glTexStorage2D(GL_TEXTURE_CUBE_MAP_NEGATIVE_Z, 1, internal_format, info->width, info->height);
-	}
 	else
 		VI_UNREACHABLE;
+
+	GL_CHECK();
 
 	GLenum address_mode;
 	cast_sampler_address_mode_gl(image->info.sampler_address_mode, &address_mode);
 	GL_CHECK(glTexParameteri(target, GL_TEXTURE_WRAP_S, address_mode));
 	GL_CHECK(glTexParameteri(target, GL_TEXTURE_WRAP_T, address_mode));
+
+	if (target == GL_TEXTURE_CUBE_MAP)
+		GL_CHECK(glTexParameteri(target, GL_TEXTURE_WRAP_R, address_mode));
 
 	GLenum filter;
 	cast_filter_gl(image->info.sampler_filter, &filter);
@@ -1964,15 +1960,16 @@ static void gl_copy_buffer(VIBuffer src, VIBuffer dst, uint32_t src_offset, uint
 	GL_CHECK();
 }
 
-static void gl_copy_buffer_to_image(VIBuffer buffer, VIImage image, uint32_t buffer_offset, const VkOffset3D& image_offset, const VkExtent3D& image_extent)
+static void gl_copy_buffer_to_image(VIBuffer buffer, VIImage image, uint32_t buffer_offset, const VkOffset3D& image_offset, const VkExtent3D& image_extent,
+	const VkImageSubresourceLayers& image_subresource)
 {
-	VI_ASSERT(image->info.type == VI_IMAGE_TYPE_2D);
 	VI_ASSERT(image_offset.z == 0 && image_extent.depth >= 1);
 
 	uint32_t texel_size;
 	GLenum internal_format, data_format, data_type;
 	cast_format_gl(image->info.format, &internal_format, &data_format, &data_type, &texel_size);
-	uint32_t access_size = image_extent.width * image_extent.height * image_extent.depth * texel_size;
+	uint32_t layer_size = image_extent.width * image_extent.height * image_extent.depth * texel_size;
+	uint32_t access_size = layer_size * image_subresource.layerCount;
 
 	VI_ASSERT(buffer_offset + access_size <= buffer->size);
 
@@ -1988,10 +1985,22 @@ static void gl_copy_buffer_to_image(VIBuffer buffer, VIImage image, uint32_t buf
 	
 	GL_CHECK();
 
+	uint32_t mip_level = image_subresource.mipLevel;
+
 	if (image->info.type == VI_IMAGE_TYPE_2D)
 	{
 		glBindTexture(GL_TEXTURE_2D, image->gl.handle);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, image_offset.x, image_offset.y, image_extent.width, image_extent.height, data_format, data_type, data);
+		glTexSubImage2D(GL_TEXTURE_2D, mip_level, image_offset.x, image_offset.y, image_extent.width, image_extent.height, data_format, data_type, data);
+	}
+	else if (image->info.type == VI_IMAGE_TYPE_CUBE)
+	{
+		glBindTexture(GL_TEXTURE_CUBE_MAP, image->gl.handle);
+
+		for (uint32_t i = image_subresource.baseArrayLayer; i < image_subresource.layerCount; i++)
+		{
+			uint8_t* face_data = (uint8_t*)data + layer_size * i;
+			glTexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, mip_level, image_offset.x, image_offset.y, image_extent.width, image_extent.height,data_format, data_type, face_data);
+		}
 	}
 	else
 		VI_UNREACHABLE;
@@ -2012,12 +2021,14 @@ static void gl_copy_image(VIImage src, VIImage dst, const VkOffset3D& src_offset
 	GL_CHECK();
 }
 
-static void gl_copy_image_to_buffer(VIImage image, VIBuffer buffer, uint32_t buffer_offset, const VkOffset3D& image_offset, const VkExtent3D& image_extent)
+static void gl_copy_image_to_buffer(VIImage image, VIBuffer buffer, uint32_t buffer_offset, const VkOffset3D& image_offset, const VkExtent3D& image_extent,
+	const VkImageSubresourceLayers& image_subresource)
 {
 	uint32_t texel_size;
 	GLenum internal_format, data_format, data_type;
 	cast_format_gl(image->info.format, &internal_format, &data_format, &data_type, &texel_size);
-	uint32_t access_size = image_extent.width * image_extent.height * image_extent.depth * texel_size;
+	uint32_t layer_size = image_extent.width * image_extent.height * image_extent.depth * texel_size;
+	uint32_t access_size = layer_size * image_subresource.layerCount;
 	
 	VI_ASSERT(buffer_offset + access_size <= buffer->size);
 
@@ -2025,9 +2036,17 @@ static void gl_copy_image_to_buffer(VIImage image, VIBuffer buffer, uint32_t buf
 		buffer->map = (uint8_t*)vi_malloc(buffer->size);
 	void* data = buffer->map + buffer_offset;
 
+	uint32_t mip_level = image_subresource.mipLevel;
+
 	if (image->info.type == VI_IMAGE_TYPE_2D)
 	{
-		glGetTextureSubImage(image->gl.handle, 0, image_offset.x, image_offset.y, image_offset.z, image_extent.width, image_extent.height, image_extent.depth, data_format, data_type, access_size, data);
+		glGetTextureSubImage(image->gl.handle, mip_level, image_offset.x, image_offset.y, image_offset.z, image_extent.width, image_extent.height, image_extent.depth, data_format, data_type, access_size, data);
+	}
+	else if (image->info.type == VI_IMAGE_TYPE_CUBE)
+	{
+		uint32_t face_start = image_subresource.baseArrayLayer;
+		uint32_t face_count = image_subresource.layerCount;
+		glGetTextureSubImage(image->gl.handle, mip_level, image_offset.x, image_offset.y, face_start, image_extent.width, image_extent.height, face_count, data_format, data_type, access_size, data);
 	}
 	else
 		VI_UNREACHABLE;
@@ -2458,10 +2477,7 @@ static void gl_cmd_execute_copy_buffer_to_image(VIDevice device, GLCommand* glcm
 
 	for (const VkBufferImageCopy& region : glcmd->copy_buffer_to_image.regions)
 	{
-		VI_ASSERT(region.imageSubresource.layerCount == 1);
-		VI_ASSERT(region.imageSubresource.mipLevel == 0);
-
-		gl_copy_buffer_to_image(buffer, image, region.bufferOffset, region.imageOffset, region.imageExtent);
+		gl_copy_buffer_to_image(buffer, image, region.bufferOffset, region.imageOffset, region.imageExtent, region.imageSubresource);
 	}
 }
 
@@ -2490,10 +2506,7 @@ static void gl_cmd_execute_copy_image_to_buffer(VIDevice device, GLCommand* glcm
 
 	for (const VkBufferImageCopy& region : glcmd->copy_image_to_buffer.regions)
 	{
-		VI_ASSERT(region.imageSubresource.layerCount == 1);
-		VI_ASSERT(region.imageSubresource.mipLevel == 0);
-
-		gl_copy_image_to_buffer(image, buffer, region.bufferOffset, region.imageOffset, region.imageExtent);
+		gl_copy_image_to_buffer(image, buffer, region.bufferOffset, region.imageOffset, region.imageExtent, region.imageSubresource);
 	}
 }
 

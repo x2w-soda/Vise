@@ -93,7 +93,7 @@ private:
 	glm::vec3 mDirection;
 	glm::vec3 mLocalRight;
 	glm::vec3 mLocalUp;
-	glm::vec3 mPosition;
+	glm::vec3 mPosition = { 0.0f, 0.0f, 0.0f };
 	glm::mat4 mView;
 	glm::mat4 mProj;
 	float mPitch = 0.0f;
@@ -130,7 +130,7 @@ protected:
 	void PrintDeviceLimits(const VIDeviceLimits& limits);
 
 	// image layout transition via image memory barrier
-	void CmdImageLayoutTransition(VICommand cmd, VIImage image, VkImageLayout old_layout, VkImageLayout new_layout);
+	void CmdImageLayoutTransition(VICommand cmd, VIImage image, VkImageLayout old_layout, VkImageLayout new_layout, uint32_t layers = 1);
 
 	// example on how to integrate Dear ImGui with both backends of Vise
 	void ImGuiNewFrame();

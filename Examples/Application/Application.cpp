@@ -502,12 +502,13 @@ VIImage Application::CreateImageStaged(VIDevice device, const VIImageInfo* info,
 	VICommand cmd = vi_alloc_command(device, pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 	vi_begin_command(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	{
-		CmdImageLayoutTransition(cmd, dstImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		CmdImageLayoutTransition(cmd, dstImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, info->layers);
 
 		VkBufferImageCopy region = MakeBufferImageCopy2D(VK_IMAGE_ASPECT_COLOR_BIT, info->width, info->height);
+		region.imageSubresource.layerCount = info->layers;
 		vi_cmd_copy_buffer_to_image(cmd, srcBuffer, dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
-		CmdImageLayoutTransition(cmd, dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, image_layout);
+		CmdImageLayoutTransition(cmd, dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, image_layout, info->layers);
 	}
 	vi_end_command(cmd);
 
@@ -525,7 +526,7 @@ VIImage Application::CreateImageStaged(VIDevice device, const VIImageInfo* info,
 	return dstImage;
 }
 
-void Application::CmdImageLayoutTransition(VICommand cmd, VIImage image, VkImageLayout old_layout, VkImageLayout new_layout)
+void Application::CmdImageLayoutTransition(VICommand cmd, VIImage image, VkImageLayout old_layout, VkImageLayout new_layout, uint32_t layers)
 {
 	// TODO: image aspect + mipmap level + array layers
 	VIImageMemoryBarrier barrier{};
@@ -538,7 +539,7 @@ void Application::CmdImageLayoutTransition(VICommand cmd, VIImage image, VkImage
 	barrier.subresource_range.baseMipLevel = 0;
 	barrier.subresource_range.levelCount = 1;
 	barrier.subresource_range.baseArrayLayer = 0;
-	barrier.subresource_range.layerCount = 1;
+	barrier.subresource_range.layerCount = layers;
 
 	VkPipelineStageFlags src_stages = 0;
 	VkPipelineStageFlags dst_stages = 0;
