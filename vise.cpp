@@ -1718,7 +1718,7 @@ static void gl_destroy_compute_pipeline(VIDevice device, VIComputePipeline pipel
 
 static void gl_create_buffer(VIDevice device, VIBuffer buffer, const VIBufferInfo* info)
 {
-	if (info->type == VI_BUFFER_TYPE_NONE)
+	if (info->type == VI_BUFFER_TYPE_TRANSFER)
 	{
 		buffer->map = (uint8_t*)vi_malloc(buffer->size);
 		buffer->gl.target = GL_NONE;
@@ -1938,13 +1938,13 @@ static void gl_copy_buffer(VIBuffer src, VIBuffer dst, uint32_t src_offset, uint
 	VI_ASSERT(src && src_offset + size <= src->size);
 	VI_ASSERT(dst && dst_offset + size <= dst->size);
 
-	if (src->type == VI_BUFFER_TYPE_NONE && dst->type == VI_BUFFER_TYPE_NONE)
+	if (src->type == VI_BUFFER_TYPE_TRANSFER && dst->type == VI_BUFFER_TYPE_TRANSFER)
 	{
 		memcpy(dst->map + dst_offset, src->map + src_offset, size);
 		return;
 	}
 
-	if (src->type == VI_BUFFER_TYPE_NONE && dst->type != VI_BUFFER_TYPE_NONE)
+	if (src->type == VI_BUFFER_TYPE_TRANSFER && dst->type != VI_BUFFER_TYPE_TRANSFER)
 	{
 		glBindBuffer(dst->gl.target, dst->gl.handle);
 		glBufferSubData(dst->gl.target, dst_offset, size, src->map + src_offset);
@@ -1952,7 +1952,7 @@ static void gl_copy_buffer(VIBuffer src, VIBuffer dst, uint32_t src_offset, uint
 		return;
 	}
 
-	if (src->type != VI_BUFFER_TYPE_NONE && dst->type == VI_BUFFER_TYPE_NONE)
+	if (src->type != VI_BUFFER_TYPE_TRANSFER && dst->type == VI_BUFFER_TYPE_TRANSFER)
 	{
 		glBindBuffer(src->gl.target, src->gl.handle);
 		glGetBufferSubData(src->gl.target, src_offset, size, dst->map + dst_offset);
@@ -1960,7 +1960,7 @@ static void gl_copy_buffer(VIBuffer src, VIBuffer dst, uint32_t src_offset, uint
 		return;
 	}
 
-	// src->type != VI_BUFFER_TYPE_NONE && dst->type != VI_BUFFER_TYPE_NONE
+	// src->type != VI_BUFFER_TYPE_TRANSFER && dst->type != VI_BUFFER_TYPE_TRANSFER
 	glCopyNamedBufferSubData(src->gl.handle, dst->gl.handle, src_offset, dst_offset, size);
 	GL_CHECK();
 }
@@ -1981,7 +1981,7 @@ static void gl_copy_buffer_to_image(VIBuffer buffer, VIImage image, uint32_t buf
 		buffer->map = (uint8_t*)vi_malloc(buffer->size);
 	void* data = buffer->map + buffer_offset;
 
-	if (buffer->type != VI_BUFFER_TYPE_NONE)
+	if (buffer->type != VI_BUFFER_TYPE_TRANSFER)
 	{
 		glBindBuffer(buffer->gl.target, buffer->gl.handle);
 		glGetBufferSubData(buffer->gl.target, buffer_offset, access_size, data);
@@ -2035,7 +2035,7 @@ static void gl_copy_image_to_buffer(VIImage image, VIBuffer buffer, uint32_t buf
 
 	GL_CHECK();
 
-	if (buffer->type == VI_BUFFER_TYPE_NONE)
+	if (buffer->type == VI_BUFFER_TYPE_TRANSFER)
 		return;
 
 	glBindBuffer(buffer->gl.target, buffer->gl.handle);
@@ -2828,7 +2828,7 @@ static void cast_buffer_usages(VIBufferType in_type, VIBufferUsageFlags in_usage
 
 	switch (in_type)
 	{
-	case VI_BUFFER_TYPE_NONE:
+	case VI_BUFFER_TYPE_TRANSFER:
 		break;
 	case VI_BUFFER_TYPE_VERTEX:
 		usages |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
@@ -4624,7 +4624,7 @@ void* vi_buffer_map_read(VIBuffer buffer, uint32_t offset, uint32_t size)
 
 	if (device->backend == VI_BACKEND_OPENGL)
 	{
-		if (buffer->type != VI_BUFFER_TYPE_NONE)
+		if (buffer->type != VI_BUFFER_TYPE_TRANSFER)
 		{
 			glBindBuffer(buffer->gl.target, buffer->gl.handle);
 			glGetBufferSubData(buffer->gl.target, offset, size, buffer->map + offset);
@@ -4646,7 +4646,7 @@ void vi_buffer_map_write(VIBuffer buffer, uint32_t offset, uint32_t size, const 
 
 	if (device->backend == VI_BACKEND_OPENGL)
 	{
-		if (buffer->type != VI_BUFFER_TYPE_NONE)
+		if (buffer->type != VI_BUFFER_TYPE_TRANSFER)
 		{
 			glBindBuffer(buffer->gl.target, buffer->gl.handle);
 			glBufferSubData(buffer->gl.target, offset, size, write);
@@ -5352,7 +5352,7 @@ VIImage vi_util_create_image_staged(VIDevice device, VIImageInfo* info, void* da
 
 	VIVulkan* vk = &device->vk;
 	VIBufferInfo src_buffer_info;
-	src_buffer_info.type = VI_BUFFER_TYPE_NONE;
+	src_buffer_info.type = VI_BUFFER_TYPE_TRANSFER;
 	src_buffer_info.size = image_size;
 	src_buffer_info.usage = VI_BUFFER_USAGE_TRANSFER_SRC_BIT;
 	src_buffer_info.properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;

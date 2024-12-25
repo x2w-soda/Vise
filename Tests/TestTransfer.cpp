@@ -151,7 +151,7 @@ void TestTransfer::TestFullCopy()
 	VIBufferInfo bufferI;
 	bufferI.properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 	bufferI.size = PATTERN_SIZE * PATTERN_SIZE * 4;
-	bufferI.type = VI_BUFFER_TYPE_NONE;
+	bufferI.type = VI_BUFFER_TYPE_TRANSFER;
 	bufferI.usage = VI_BUFFER_USAGE_TRANSFER_SRC_BIT | VI_BUFFER_USAGE_TRANSFER_DST_BIT;
 	buffer1 = vi_create_buffer(mDevice, &bufferI);
 	buffer2 = vi_create_buffer(mDevice, &bufferI);

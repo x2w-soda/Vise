@@ -57,7 +57,7 @@ TestApplication::TestApplication(const char* name, VIBackend backend)
 	mScreenshotFBO = vi_create_framebuffer(mDevice, &fboI);
 
 	VIBufferInfo bufferI;
-	bufferI.type = VI_BUFFER_TYPE_NONE;
+	bufferI.type = VI_BUFFER_TYPE_TRANSFER;
 	bufferI.size = TEST_WINDOW_WIDTH * TEST_WINDOW_HEIGHT * 4;
 	bufferI.usage = VI_BUFFER_USAGE_TRANSFER_DST_BIT;
 	bufferI.properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
