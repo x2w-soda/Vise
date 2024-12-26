@@ -326,6 +326,25 @@ struct VIPipelineBlendStateInfo
 	VIBlendOp alpha_blend_op;
 };
 
+enum VICompareOp
+{
+	VI_COMPARE_OP_NEVER,
+	VI_COMPARE_OP_LESS,
+	VI_COMPARE_OP_EQUAL,
+	VI_COMPARE_OP_LESS_OR_EQUAL,
+	VI_COMPARE_OP_GREATER,
+	VI_COMPARE_OP_NOT_EQUAL,
+	VI_COMPARE_OP_GREATER_OR_EQUAL,
+	VI_COMPARE_OP_ALWAYS,
+};
+
+struct VIPipelineDepthStencilStateInfo
+{
+	bool depth_test_enabled = true;
+	bool depth_write_enabled = true;
+	VICompareOp depth_compare_op = VI_COMPARE_OP_LESS;
+};
+
 struct VIPipelineInfo
 {
 	uint32_t vertex_binding_count;
@@ -334,6 +353,7 @@ struct VIPipelineInfo
 	VIVertexBinding* vertex_bindings;
 	VIPipelineLayout layout;
 	VIPipelineBlendStateInfo blend_state;
+	VIPipelineDepthStencilStateInfo depth_stencil_state;
 	VIModule vertex_module;
 	VIModule fragment_module;
 	VIPass pass;

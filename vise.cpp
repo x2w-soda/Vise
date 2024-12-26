@@ -351,6 +351,7 @@ struct VIPipelineObj : VIObject
 	std::vector<VIVertexAttribute> vertex_attributes;
 	VIPipelineLayout layout;
 	VIPipelineBlendStateInfo blend_state;
+	VIPipelineDepthStencilStateInfo depth_stencil_state;
 	VIModule vertex_module;
 	VIModule fragment_module;
 
@@ -724,6 +725,8 @@ static void flip_image_data(uint8_t* data, uint32_t image_width, uint32_t image_
 
 static void debug_print_compilation(const spirv_cross::CompilerGLSL& compiler, EShLanguage stage);
 
+static void cast_compare_op_vk(VICompareOp in_op, VkCompareOp* out_op);
+static void cast_compare_op_gl(VICompareOp in_op, GLenum* out_op);
 static void cast_module_type_bit(VIModuleType in_type, EShLanguage* out_type);
 static void cast_module_type_bit(VIModuleType in_type, GLenum* out_type);
 static void cast_index_type(VkIndexType in_type, GLenum* out_type);
@@ -810,6 +813,24 @@ struct VIFilterEntry
 static const VIFilterEntry vi_filter_table[2] = {
 	{ VI_FILTER_LINEAR,  VK_FILTER_LINEAR,  GL_LINEAR },
 	{ VI_FILTER_NEAREST, VK_FILTER_NEAREST, GL_NEAREST },
+};
+
+struct VICompareOpEntry
+{
+	VICompareOp vi_compare_op;
+	VkCompareOp vk_compare_op;
+	GLenum gl_compare_op;
+};
+
+static const VICompareOpEntry vi_compare_op_table[8] = {
+	{ VI_COMPARE_OP_NEVER,            VK_COMPARE_OP_NEVER,            GL_NEVER },
+	{ VI_COMPARE_OP_LESS,             VK_COMPARE_OP_LESS,             GL_LESS },
+	{ VI_COMPARE_OP_EQUAL,            VK_COMPARE_OP_EQUAL,            GL_EQUAL },
+	{ VI_COMPARE_OP_LESS_OR_EQUAL,    VK_COMPARE_OP_LESS_OR_EQUAL,    GL_LEQUAL },
+	{ VI_COMPARE_OP_GREATER,          VK_COMPARE_OP_GREATER,          GL_GREATER },
+	{ VI_COMPARE_OP_NOT_EQUAL,        VK_COMPARE_OP_NOT_EQUAL,        GL_NOTEQUAL },
+	{ VI_COMPARE_OP_GREATER_OR_EQUAL, VK_COMPARE_OP_GREATER_OR_EQUAL, GL_GEQUAL },
+	{ VI_COMPARE_OP_ALWAYS,           VK_COMPARE_OP_ALWAYS,           GL_ALWAYS },
 };
 
 struct VISamplerAddressModeEntry
@@ -2321,6 +2342,19 @@ static void gl_cmd_execute_bind_pipeline(VIDevice device, GLCommand* glcmd)
 	glBindVertexArray(glcmd->bind_pipeline->gl.vao);
 	glUseProgram(glcmd->bind_pipeline->gl.program);
 
+	// depth stencil states
+	if (pipeline->depth_stencil_state.depth_test_enabled)
+	{
+		GLenum depthCompareOp;
+		cast_compare_op_gl(pipeline->depth_stencil_state.depth_compare_op, &depthCompareOp);
+
+		glEnable(GL_DEPTH_TEST);
+		glDepthFunc(depthCompareOp);
+		glDepthMask(pipeline->depth_stencil_state.depth_write_enabled);
+	}
+	else
+		glDisable(GL_DEPTH_TEST);
+
 	// blend states
 	if (pipeline->blend_state.enabled)
 	{
@@ -2767,6 +2801,16 @@ static void debug_print_compilation(const spirv_cross::CompilerGLSL& compiler, E
 	std::cout << "Storage Image count: " << resources.storage_images.size() << std::endl;
 	std::cout << "Builtin Inputs count: " << resources.builtin_inputs.size() << std::endl;
 	std::cout << "Builtin Output count: " << resources.builtin_outputs.size() << std::endl;
+}
+
+static void cast_compare_op_vk(VICompareOp in_op, VkCompareOp* out_op)
+{
+	*out_op = vi_compare_op_table[(int)in_op].vk_compare_op;
+}
+
+static void cast_compare_op_gl(VICompareOp in_op, GLenum* out_op)
+{
+	*out_op = vi_compare_op_table[(int)in_op].gl_compare_op;
 }
 
 static void cast_module_type(VIModuleType in_flags, VkShaderStageFlags* out_stages)
@@ -4133,6 +4177,7 @@ VIPipeline vi_create_pipeline(VIDevice device, const VIPipelineInfo* info)
 	new (pipeline) VIPipelineObj();
 	pipeline->device = device;
 	pipeline->blend_state = info->blend_state;
+	pipeline->depth_stencil_state = info->depth_stencil_state;
 	pipeline->layout = info->layout;
 	pipeline->vertex_bindings.resize(info->vertex_binding_count);
 	pipeline->vertex_attributes.resize(info->vertex_attribute_count);
@@ -4266,12 +4311,13 @@ VIPipeline vi_create_pipeline(VIDevice device, const VIPipelineInfo* info)
 	viewportStateCI.viewportCount = 1;
 	viewportStateCI.pViewports = &viewport;
 
-	// TODO: parameterize
+	VkCompareOp depth_compare_op;
+	cast_compare_op_vk(info->depth_stencil_state.depth_compare_op, &depth_compare_op);
 	VkPipelineDepthStencilStateCreateInfo depthStencilStateCI{};
 	depthStencilStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-	depthStencilStateCI.depthTestEnable = VK_TRUE;
-	depthStencilStateCI.depthWriteEnable = VK_TRUE;
-	depthStencilStateCI.depthCompareOp = VK_COMPARE_OP_LESS;
+	depthStencilStateCI.depthTestEnable = info->depth_stencil_state.depth_test_enabled;
+	depthStencilStateCI.depthWriteEnable = info->depth_stencil_state.depth_write_enabled;
+	depthStencilStateCI.depthCompareOp = depth_compare_op;
 	depthStencilStateCI.depthBoundsTestEnable = VK_FALSE;
 	depthStencilStateCI.minDepthBounds = 0.0f; // Optional
 	depthStencilStateCI.maxDepthBounds = 1.0f; // Optional
@@ -4288,7 +4334,7 @@ VIPipeline vi_create_pipeline(VIDevice device, const VIPipelineInfo* info)
 	pipelineCI.pViewportState = &viewportStateCI;
 	pipelineCI.pRasterizationState = &rasterizationCI;
 	pipelineCI.pMultisampleState = &multisampleStateCI;
-	pipelineCI.pDepthStencilState = &depthStencilStateCI;// TODO: parameterize
+	pipelineCI.pDepthStencilState = &depthStencilStateCI;
 	pipelineCI.pColorBlendState = &blendStateCI;
 	pipelineCI.pDynamicState = &dynamicStateCI;
 	pipelineCI.renderPass = info->pass->vk.handle;
