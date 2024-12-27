@@ -43,6 +43,7 @@ VkClearValue MakeClearColor(float r, float g, float b, float a);
 
 // helper to reduce image creation verbosity
 VIImageInfo MakeImageInfo2D(VIFormat format, uint32_t width, uint32_t height, VkMemoryPropertyFlags properties);
+VIImageInfo MakeImageInfoCube(VIFormat format, uint32_t dim, VkMemoryPropertyFlags properties);
 
 // helper to reduce render pass color attachment verbosity
 VIPassColorAttachment MakePassColorAttachment(VIFormat format, VkAttachmentLoadOp load_op, VkAttachmentStoreOp store_op,

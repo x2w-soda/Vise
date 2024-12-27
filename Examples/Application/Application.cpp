@@ -115,6 +115,22 @@ VIImageInfo MakeImageInfo2D(VIFormat format, uint32_t width, uint32_t height, Vk
 	return imageI;
 }
 
+VIImageInfo MakeImageInfoCube(VIFormat format, uint32_t dim, VkMemoryPropertyFlags properties)
+{
+	VIImageInfo imageI;
+	imageI.type = VI_IMAGE_TYPE_CUBE;
+	imageI.usage = 0;
+	imageI.layers = 6;
+	imageI.format = format;
+	imageI.width = dim;
+	imageI.height = dim;
+	imageI.properties = properties;
+	imageI.sampler_address_mode = VI_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	imageI.sampler_filter = VI_FILTER_LINEAR;
+
+	return imageI;
+}
+
 VIPassColorAttachment MakePassColorAttachment(VIFormat format, VkAttachmentLoadOp load_op, VkAttachmentStoreOp store_op, VkImageLayout initial_layout, VkImageLayout final_layout)
 {
 	VIPassColorAttachment pass_color_attachment;
@@ -206,11 +222,11 @@ VIBuffer CreateBufferStaged(VIDevice device, const VIBufferInfo* info, const voi
 
 VIImage CreateImageStaged(VIDevice device, const VIImageInfo* info, const void* data, VkImageLayout image_layout)
 {
-	assert(info->format == VI_FORMAT_RGBA8);
+	//assert(info->format == VI_FORMAT_RGBA8);
 	assert(info->usage & VI_IMAGE_USAGE_TRANSFER_DST_BIT);
 	assert(info->properties & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-	size_t texelSize = 4; // TODO: query
+	size_t texelSize = info->format == VI_FORMAT_RGBA8 ? 4 : 16; // TODO: query
 	size_t imageSize = info->width * info->height * texelSize * info->layers;
 
 	VIBufferInfo stagingBufferI;
