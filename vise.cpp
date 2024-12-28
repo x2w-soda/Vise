@@ -694,9 +694,12 @@ static void gl_free_set(VIDevice device, VISet set);
 static void gl_set_update(VISet set, uint32_t update_count, const VISetUpdateInfo* updates);
 static void gl_pipeline_layout_get_remapped_binding(VIPipelineLayout layout, uint32_t set_idx, uint32_t binding_idx, uint32_t* remapped_binding);
 static void gl_copy_buffer(VIBuffer src, VIBuffer dst, uint32_t src_offset, uint32_t dst_offset, uint32_t size);
-static void gl_copy_buffer_to_image(VIBuffer buffer, VIImage image, uint32_t buffer_offset, const VkOffset3D& image_offset, const VkExtent3D& image_extent, const VkImageSubresourceLayers& image_subresource);
-static void gl_copy_image(VIImage src, VIImage dst, const VkOffset3D& src_offset, const VkOffset3D& dst_offset, const VkExtent3D& extent);
-static void gl_copy_image_to_buffer(VIImage image, VIBuffer buffer, uint32_t buffer_offset, const VkOffset3D& image_offset, const VkExtent3D& image_extent, const VkImageSubresourceLayers& image_subresource);
+static void gl_copy_buffer_to_image(VIBuffer buffer, VIImage image, uint32_t buffer_offset, const VkOffset3D& image_offset, const VkExtent3D& image_extent,
+	const VkImageSubresourceLayers& image_subresource);
+static void gl_copy_image(VIImage src, VIImage dst, const VkOffset3D& src_offset, const VkOffset3D& dst_offset, const VkExtent3D& extent,
+	const VkImageSubresourceLayers& src_subresource, const VkImageSubresourceLayers& dst_subresource);
+static void gl_copy_image_to_buffer(VIImage image, VIBuffer buffer, uint32_t buffer_offset, const VkOffset3D& image_offset, const VkExtent3D& image_extent,
+	const VkImageSubresourceLayers& image_subresource);
 static GLCommand* gl_append_command(VICommand cmd, GLCommandType type);
 static void gl_reset_command(VIDevice device, VICommand cmd);
 static void gl_cmd_execute(VIDevice device, VICommand cmd);
@@ -796,11 +799,13 @@ struct VIGLSLTypeEntry
 	GLenum gl_component_type;
 };
 
-static const VIGLSLTypeEntry vi_glsl_type_table[4] = {
+static const VIGLSLTypeEntry vi_glsl_type_table[6] = {
+	{ VI_GLSL_TYPE_FLOAT, VK_FORMAT_R32_SFLOAT,         1, GL_FLOAT },
 	{ VI_GLSL_TYPE_VEC2, VK_FORMAT_R32G32_SFLOAT,       2, GL_FLOAT },
 	{ VI_GLSL_TYPE_VEC3, VK_FORMAT_R32G32B32_SFLOAT,    3, GL_FLOAT },
 	{ VI_GLSL_TYPE_VEC4, VK_FORMAT_R32G32B32A32_SFLOAT, 4, GL_FLOAT },
 	{ VI_GLSL_TYPE_UINT, VK_FORMAT_R32_UINT,            1, GL_UNSIGNED_INT },
+	{ VI_GLSL_TYPE_MAT4, VK_FORMAT_UNDEFINED,           16, GL_FLOAT },
 };
 
 struct VIFilterEntry
@@ -2031,15 +2036,40 @@ static void gl_copy_buffer_to_image(VIBuffer buffer, VIImage image, uint32_t buf
 	GL_CHECK();
 }
 
-static void gl_copy_image(VIImage src, VIImage dst, const VkOffset3D& src_offset, const VkOffset3D& dst_offset, const VkExtent3D& extent)
+static void gl_copy_image(VIImage src, VIImage dst, const VkOffset3D& src_offset, const VkOffset3D& dst_offset, const VkExtent3D& extent,
+	const VkImageSubresourceLayers& src_subresource, const VkImageSubresourceLayers& dst_subresource)
 {
-	GLint src_mip_level = 0;
-	GLint dst_mip_level = 0;
+	GLint src_mip_level = src_subresource.mipLevel;
+	GLint dst_mip_level = dst_subresource.mipLevel;
+	GLint src_layer = src_subresource.baseArrayLayer;
+	GLint dst_layer = dst_subresource.baseArrayLayer;
 
-	glCopyImageSubData(
-		src->gl.handle, src->gl.target, src_mip_level, src_offset.x, src_offset.y, src_offset.z,
-		dst->gl.handle, dst->gl.target, dst_mip_level, dst_offset.x, dst_offset.y, dst_offset.z,
-		extent.width, extent.height, extent.depth);
+	VI_ASSERT(src->info.format == dst->info.format); // TODO: format compatability?
+	VI_ASSERT(src_subresource.layerCount == 1 && dst_subresource.layerCount == 1); // TODO: loop
+
+	uint32_t texel_size;
+	GLenum internal_format, data_format, data_type;
+	cast_format_gl(src->info.format, &internal_format, &data_format, &data_type, &texel_size);
+	uint32_t layer_size = extent.width * extent.height * extent.depth * texel_size;
+	uint32_t access_size = layer_size * src_subresource.layerCount;
+
+	if (src->info.type == VI_IMAGE_TYPE_2D && dst->info.type == VI_IMAGE_TYPE_2D)
+	{
+		glCopyImageSubData(
+			src->gl.handle, src->gl.target, src_mip_level, src_offset.x, src_offset.y, src_offset.z,
+			dst->gl.handle, dst->gl.target, dst_mip_level, dst_offset.x, dst_offset.y, dst_offset.z,
+			extent.width, extent.height, extent.depth);
+	}
+	else if (src->info.type == VI_IMAGE_TYPE_2D && dst->info.type == VI_IMAGE_TYPE_CUBE)
+	{
+		uint8_t* data = (uint8_t*)vi_malloc(access_size);
+		glGetTextureSubImage(src->gl.handle, src_mip_level, src_offset.x, src_offset.y, 0, extent.width, extent.height, 1, data_format, data_type, access_size, data);
+		glBindTexture(GL_TEXTURE_CUBE_MAP, dst->gl.handle);
+		glTexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + dst_layer, dst_mip_level, dst_offset.x, dst_offset.y, extent.width, extent.height, data_format, data_type, data);
+		vi_free(data);
+	}
+	else
+		VI_UNREACHABLE;
 
 	GL_CHECK();
 }
@@ -2250,11 +2280,17 @@ static void gl_cmd_execute_push_constants(VIDevice device, GLCommand* glcmd)
 
 			switch (pc->uniform_glsl_type)
 			{
+			case VI_GLSL_TYPE_FLOAT:
+				glUniform1fv(pc_loc, pc->uniform_arr_size, (const GLfloat*)value_base);
+				break;
 			case VI_GLSL_TYPE_VEC4:
 				glUniform4fv(pc_loc, pc->uniform_arr_size, (const GLfloat*)value_base);
 				break;
 			case VI_GLSL_TYPE_UINT:
 				glUniform1uiv(pc_loc, pc->uniform_arr_size, (const GLuint*)value_base);
+				break;
+			case VI_GLSL_TYPE_MAT4:
+				glUniformMatrix4fv(pc_loc, 1, false, (const GLfloat*)value_base);
 				break;
 			default:
 				VI_UNREACHABLE;
@@ -2526,10 +2562,7 @@ static void gl_cmd_execute_copy_image(VIDevice device, GLCommand* glcmd)
 
 	for (const VkImageCopy& region : glcmd->copy_image.regions)
 	{
-		VI_ASSERT(region.srcSubresource.baseArrayLayer == 0 && region.srcSubresource.layerCount == 1 && region.srcSubresource.mipLevel == 0);
-		VI_ASSERT(region.dstSubresource.baseArrayLayer == 0 && region.dstSubresource.layerCount == 1 && region.dstSubresource.mipLevel == 0);
-		
-		gl_copy_image(src, dst, region.srcOffset, region.dstOffset, region.extent);
+		gl_copy_image(src, dst, region.srcOffset, region.dstOffset, region.extent, region.srcSubresource, region.dstSubresource);
 	}
 }
 
@@ -3108,6 +3141,9 @@ static void cast_glsl_type(const spirv_cross::SPIRType& in_type, VIGLSLType* out
 	{
 		switch (in_type.vecsize)
 		{
+		case 1:
+			*out_type = VI_GLSL_TYPE_FLOAT;
+			return;
 		case 2:
 			*out_type = VI_GLSL_TYPE_VEC2;
 			return;
@@ -3115,6 +3151,11 @@ static void cast_glsl_type(const spirv_cross::SPIRType& in_type, VIGLSLType* out
 			*out_type = VI_GLSL_TYPE_VEC3;
 			return;
 		case 4:
+			if (in_type.columns == 4)
+			{
+				*out_type = VI_GLSL_TYPE_MAT4;
+				return;
+			}
 			*out_type = VI_GLSL_TYPE_VEC4;
 			return;
 		}
@@ -3140,6 +3181,7 @@ static void cast_pipeline_vertex_input(uint32_t attr_count, VIVertexAttribute* a
 	{
 		VkFormat format;
 		cast_glsl_type(attrs[i].type, &format);
+		VI_ASSERT(format != VK_FORMAT_UNDEFINED && "not supported");
 
 		out_attrs[i].binding = attrs[i].binding;
 		out_attrs[i].location = i;
