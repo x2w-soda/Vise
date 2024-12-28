@@ -3551,6 +3551,50 @@ void vi_destroy_device(VIDevice device)
 	VI_ASSERT(host_malloc_usage == 0);
 }
 
+VIFence vi_create_fence(VIDevice device, VkFenceCreateFlags flags)
+{
+	VIFence fence = (VIFence)vi_malloc(sizeof(VIFenceObj));
+	fence->device = device;
+	
+	if (device->backend == VI_BACKEND_OPENGL)
+	{
+		fence->gl_signal = false;
+		return fence;
+	}
+
+	VkFenceCreateInfo fenceCI;
+	fenceCI.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fenceCI.pNext = nullptr;
+	fenceCI.flags = flags;
+	VK_CHECK(vkCreateFence(device->vk.device, &fenceCI, nullptr, &fence->vk_handle));
+
+	return fence;
+}
+
+void vi_destroy_fence(VIDevice device, VIFence fence)
+{
+	if (device->backend == VI_BACKEND_VULKAN)
+		vkDestroyFence(device->vk.device, fence->vk_handle, nullptr);
+
+	vi_free(fence);
+}
+
+void vi_wait_for_fences(VIDevice device, uint32_t fence_count, VIFence* fences, bool wait_all, uint64_t timeout)
+{
+	if (device->backend == VI_BACKEND_OPENGL)
+	{
+		for (uint32_t i = 0; i < fence_count; i++)
+			fences[i]->gl_signal = true;
+		return;
+	}
+
+	std::vector<VkFence> vk_fences(fence_count);
+	for (uint32_t i = 0; i < fence_count; i++)
+		vk_fences[i] = fences[i]->vk_handle;
+
+	VK_CHECK(vkWaitForFences(device->vk.device, fence_count, vk_fences.data(), wait_all, timeout));
+}
+
 void vi_queue_wait_idle(VIQueue queue)
 {
 	if (queue->device->backend == VI_BACKEND_OPENGL)

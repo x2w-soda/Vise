@@ -475,6 +475,9 @@ struct VIDrawIndexedInfo
 VI_API VIDevice vi_create_device_vk(const VIDeviceInfo* info, VIDeviceLimits* limits);
 VI_API VIDevice vi_create_device_gl(const VIDeviceInfo* info, VIDeviceLimits* limits);
 VI_API void vi_destroy_device(VIDevice device);
+VI_API VIFence vi_create_fence(VIDevice device, VkFenceCreateFlags flags);
+VI_API void vi_wait_for_fences(VIDevice device, uint32_t fence_count, VIFence* fences, bool wait_all, uint64_t timeout);
+VI_API void vi_destroy_fence(VIDevice device, VIFence fence);
 VI_API VIPass vi_create_pass(VIDevice device, const VIPassInfo* info);
 VI_API void vi_destroy_pass(VIDevice device, VIPass pass);
 VI_API VIModule vi_create_module(VIDevice device, const VIModuleInfo* info);
