@@ -2202,12 +2202,6 @@ static void gl_cmd_execute_set_viewport(VIDevice device, GLCommand* glcmd)
 	GLsizei height = (GLsizei)glcmd->set_viewport.height;
 	GLsizei fb_height = (GLsizei)device->gl.active_framebuffer->extent.height;
 
-	// 1. glViewport origin is opposite from Vulkan.
-	// 2. In OpenGL, offscreen framebuffers are logically flipped due to texture origin.
-	bool flip_gl_viewport = device->gl.active_framebuffer == device->swapchain_framebuffers;
-	if (flip_gl_viewport)
-		y = fb_height - y - height;
-
 	glViewport(x, y, width, height);
 }
 
@@ -2222,7 +2216,7 @@ static void gl_cmd_execute_set_scissor(VIDevice device, GLCommand* glcmd)
 	GLsizei fb_height = (GLsizei)device->gl.active_framebuffer->extent.height;
 
 	glEnable(GL_SCISSOR_TEST);
-	glScissor(x, fb_height - y - height, width, height);
+	glScissor(x, y, width, height);
 }
 
 static void gl_cmd_execute_draw(VIDevice device, GLCommand* glcmd)
@@ -2469,7 +2463,7 @@ static void gl_cmd_execute_begin_pass(VIDevice device, GLCommand* glcmd)
 
 	// flip VIOpenGL clip space Y axis when rendering to offscreen framebuffers
 	bool flip_gl_clip_origin = framebuffer != device->swapchain_framebuffers;
-	//flip_gl_clip_origin = false;
+	flip_gl_clip_origin = false;
 	GLenum clip_origin = flip_gl_clip_origin ? GL_UPPER_LEFT : GL_LOWER_LEFT;
 	glClipControl(clip_origin, GL_ZERO_TO_ONE);
 
@@ -5090,7 +5084,7 @@ void vi_cmd_bind_pipeline(VICommand cmd, VIPipeline pipeline)
 
 	// when rendering to offscreen framebuffers, render the contents flipped
 	bool flip_vk_front_face = !cmd->device->vk.pass_uses_swapchain_framebuffer;
-	flip_vk_front_face = false;
+	//flip_vk_front_face = false;
 	VkFrontFace front_face = pipeline->vk.front_face;
 
 	if (flip_vk_front_face)
@@ -5225,7 +5219,7 @@ void vi_cmd_set_viewport(VICommand cmd, VkViewport viewport)
 	}
 
 	bool flip_vk_viewport = cmd->device->vk.pass_uses_swapchain_framebuffer;
-	flip_vk_viewport = true;
+	//flip_vk_viewport = true;
 
 	if (flip_vk_viewport)
 	{
