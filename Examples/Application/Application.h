@@ -61,7 +61,7 @@ VIBuffer CreateBufferStaged(VIDevice device, const VIBufferInfo* info, const voi
 VIImage CreateImageStaged(VIDevice device, const VIImageInfo* info, const void* data, VkImageLayout image_layout);
 
 // image layout transition via image memory barrier
-void CmdImageLayoutTransition(VICommand cmd, VIImage image, VkImageLayout old_layout, VkImageLayout new_layout, uint32_t layers = 1);
+void CmdImageLayoutTransition(VICommand cmd, VIImage image, VkImageLayout old_layout, VkImageLayout new_layout, uint32_t layers = 1, uint32_t levels = 1);
 
 class Camera
 {

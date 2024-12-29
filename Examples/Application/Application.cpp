@@ -101,32 +101,30 @@ VkClearValue MakeClearColor(float r, float g, float b, float a)
 
 VIImageInfo MakeImageInfo2D(VIFormat format, uint32_t width, uint32_t height, VkMemoryPropertyFlags properties)
 {
-	VIImageInfo imageI;
+	VIImageInfo imageI{};
 	imageI.type = VI_IMAGE_TYPE_2D;
 	imageI.usage = 0;
 	imageI.layers = 1;
+	imageI.levels = 1;
 	imageI.format = format;
 	imageI.width = width;
 	imageI.height = height;
 	imageI.properties = properties;
-	imageI.sampler_address_mode = VI_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	imageI.sampler_filter = VI_FILTER_LINEAR;
 
 	return imageI;
 }
 
 VIImageInfo MakeImageInfoCube(VIFormat format, uint32_t dim, VkMemoryPropertyFlags properties)
 {
-	VIImageInfo imageI;
+	VIImageInfo imageI{};
 	imageI.type = VI_IMAGE_TYPE_CUBE;
 	imageI.usage = 0;
 	imageI.layers = 6;
+	imageI.levels = 1;
 	imageI.format = format;
 	imageI.width = dim;
 	imageI.height = dim;
 	imageI.properties = properties;
-	imageI.sampler_address_mode = VI_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	imageI.sampler_filter = VI_FILTER_LINEAR;
 
 	return imageI;
 }
@@ -271,7 +269,7 @@ VIImage CreateImageStaged(VIDevice device, const VIImageInfo* info, const void* 
 	return dstImage;
 }
 
-void CmdImageLayoutTransition(VICommand cmd, VIImage image, VkImageLayout old_layout, VkImageLayout new_layout, uint32_t layers)
+void CmdImageLayoutTransition(VICommand cmd, VIImage image, VkImageLayout old_layout, VkImageLayout new_layout, uint32_t layers, uint32_t levels)
 {
 	// TODO: image aspect + mipmap level + array layers
 	VIImageMemoryBarrier barrier{};
@@ -282,7 +280,7 @@ void CmdImageLayoutTransition(VICommand cmd, VIImage image, VkImageLayout old_la
 	barrier.image = image;
 	barrier.subresource_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	barrier.subresource_range.baseMipLevel = 0;
-	barrier.subresource_range.levelCount = 1;
+	barrier.subresource_range.levelCount = levels;
 	barrier.subresource_range.baseArrayLayer = 0;
 	barrier.subresource_range.layerCount = layers;
 

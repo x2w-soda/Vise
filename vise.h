@@ -111,6 +111,8 @@ enum VIFormat
 	VI_FORMAT_UNDEFINED,
 	VI_FORMAT_RGBA8,
 	VI_FORMAT_BGRA8,
+	VI_FORMAT_RG16F,
+	VI_FORMAT_RGB16F,
 	VI_FORMAT_RGBA16F,
 	VI_FORMAT_RGB32F,
 	VI_FORMAT_RGBA32F,
@@ -226,6 +228,15 @@ struct VIModuleInfo
 	const char* vise_glsl = nullptr;
 };
 
+struct VISamplerInfo
+{
+	VIFilter filter = VI_FILTER_LINEAR;
+	VIFilter mipmap_filter = VI_FILTER_LINEAR;
+	VISamplerAddressMode address_mode = VI_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	float min_lod = 0.0f;
+	float max_lod = 1.0f;
+};
+
 struct VIImageInfo
 {
 	VIImageType type;
@@ -235,8 +246,8 @@ struct VIImageInfo
 	uint32_t width;
 	uint32_t height;
 	uint32_t layers = 1;
-	VIFilter sampler_filter = VI_FILTER_LINEAR;
-	VISamplerAddressMode sampler_address_mode = VI_SAMPLER_ADDRESS_MODE_REPEAT;
+	uint32_t levels = 1;
+	VISamplerInfo sampler;
 };
 
 struct VIBufferInfo

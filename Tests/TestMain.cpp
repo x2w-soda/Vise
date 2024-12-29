@@ -194,14 +194,12 @@ void TestDriver::MSETest::Init(VIDevice device, VISetPool set_pool, VISetLayout 
 	stbi_uc* data1 = stbi_load(Path1, &width1, &height1, &ch1, STBI_rgb_alpha);
 	stbi_uc* data2 = stbi_load(Path2, &width2, &height2, &ch2, STBI_rgb_alpha);
 
-	VIImageInfo imageI;
+	VIImageInfo imageI{};
 	imageI.type = VI_IMAGE_TYPE_2D;
 	imageI.format = VI_FORMAT_RGBA8;
 	imageI.usage = VI_IMAGE_USAGE_STORAGE_BIT | VI_IMAGE_USAGE_TRANSFER_DST_BIT | VI_IMAGE_USAGE_TRANSFER_SRC_BIT;
 	imageI.width = (uint32_t)TEST_WINDOW_WIDTH;
 	imageI.height = (uint32_t)TEST_WINDOW_HEIGHT;
-	imageI.sampler_filter = VI_FILTER_LINEAR;
-	imageI.sampler_address_mode = VI_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 	imageI.properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 	Image1 = CreateImageStaged(device, &imageI, data1, VK_IMAGE_LAYOUT_GENERAL);
 	Image2 = CreateImageStaged(device, &imageI, data2, VK_IMAGE_LAYOUT_GENERAL);

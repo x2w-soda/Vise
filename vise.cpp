@@ -738,8 +738,8 @@ static void cast_buffer_type(VIBufferType in_type, GLenum* out_type);
 static void cast_image_usages(VIImageUsageFlags in_usages, VkImageUsageFlags* out_usages);
 static void cast_image_type(VIImageType in_type, VkImageType* out_type, VkImageViewType* out_view_type);
 static void cast_image_type(VIImageType in_type, GLenum* out_type);
-static void cast_filter_vk(VIFilter in_filter, VkFilter* out_filter);
-static void cast_filter_gl(VIFilter in_filter, GLenum* out_filter);
+static void cast_filter_vk(const VISamplerInfo& in_sampler, VkFilter* out_filter, VkSamplerMipmapMode* out_mipmap_mode);
+static void cast_filter_gl(const VISamplerInfo& in_sampler, GLenum* out_min_filter, GLenum* out_mag_filter);
 static void cast_sampler_address_mode_vk(VISamplerAddressMode in_address_mode, VkSamplerAddressMode* out_address_mode);
 static void cast_sampler_address_mode_gl(VISamplerAddressMode in_address_mode, GLenum* out_address_mode);
 static void cast_blend_factor_vk(VIBlendFactor in_factor, VkBlendFactor* out_factor);
@@ -812,12 +812,13 @@ struct VIFilterEntry
 {
 	VIFilter vi_filter;
 	VkFilter vk_filter;
+	VkSamplerMipmapMode vk_mipmap_mode;
 	GLenum gl_filter;
 };
 
 static const VIFilterEntry vi_filter_table[2] = {
-	{ VI_FILTER_LINEAR,  VK_FILTER_LINEAR,  GL_LINEAR },
-	{ VI_FILTER_NEAREST, VK_FILTER_NEAREST, GL_NEAREST },
+	{ VI_FILTER_LINEAR,  VK_FILTER_LINEAR,  VK_SAMPLER_MIPMAP_MODE_LINEAR,  GL_LINEAR },
+	{ VI_FILTER_NEAREST, VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST, GL_NEAREST },
 };
 
 struct VICompareOpEntry
@@ -890,7 +891,7 @@ struct VIImageTypeEntry
 	GLenum gl_type;
 };
 
-static const VIImageTypeEntry vi_image_type_entry[3] = {
+static const VIImageTypeEntry vi_image_type_table[3] = {
 	{ VI_IMAGE_TYPE_2D,        VK_IMAGE_TYPE_2D,  VK_IMAGE_VIEW_TYPE_2D,       GL_TEXTURE_2D },
 	{ VI_IMAGE_TYPE_2D_ARRAY,  VK_IMAGE_TYPE_2D,  VK_IMAGE_VIEW_TYPE_2D_ARRAY, GL_TEXTURE_2D_ARRAY },
 	{ VI_IMAGE_TYPE_CUBE,      VK_IMAGE_TYPE_2D,  VK_IMAGE_VIEW_TYPE_CUBE,     GL_TEXTURE_CUBE_MAP },
@@ -915,10 +916,12 @@ struct VIFormatEntry
 	GLenum gl_data_type;
 };
 
-static const VIFormatEntry vi_format_table[8] = {
+static const VIFormatEntry vi_format_table[10] = {
 	{ VI_FORMAT_UNDEFINED, (VIImageAspectFlags)0,        VK_FORMAT_UNDEFINED,           0,  GL_NONE,              GL_NONE,          GL_NONE },
 	{ VI_FORMAT_RGBA8,    VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R8G8B8A8_UNORM,      4,  GL_RGBA8,             GL_RGBA,          GL_UNSIGNED_BYTE },
 	{ VI_FORMAT_BGRA8,    VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_B8G8R8A8_UNORM,      4,  GL_RGBA8,             GL_BGRA,          GL_UNSIGNED_BYTE },
+	{ VI_FORMAT_RG16F,    VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R16G16_SFLOAT,       4,  GL_RG16F,             GL_RG,            GL_HALF_FLOAT },
+	{ VI_FORMAT_RGB16F,   VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R16G16B16_SFLOAT,    6,  GL_RGB16F,            GL_RGB,           GL_HALF_FLOAT },
 	{ VI_FORMAT_RGBA16F,  VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R16G16B16A16_SFLOAT, 8,  GL_RGBA16F,           GL_RGBA,          GL_HALF_FLOAT },
 	{ VI_FORMAT_RGB32F,   VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R32G32B32_SFLOAT,    12, GL_RGB32F,            GL_RGB,           GL_FLOAT },
 	{ VI_FORMAT_RGBA32F,  VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R32G32B32A32_SFLOAT, 16, GL_RGBA32F,           GL_RGBA,          GL_FLOAT },
@@ -1790,24 +1793,27 @@ static void gl_create_image(VIOpenGL* gl, VIImage image, const VIImageInfo* info
 	glBindTexture(target, image->gl.handle);
 
 	if (target == GL_TEXTURE_2D || target == GL_TEXTURE_CUBE_MAP)
-		glTexStorage2D(target, 1, internal_format, info->width, info->height);
+		glTexStorage2D(target, info->levels, internal_format, info->width, info->height);
 	else
 		VI_UNREACHABLE;
 
 	GL_CHECK();
 
 	GLenum address_mode;
-	cast_sampler_address_mode_gl(image->info.sampler_address_mode, &address_mode);
+	cast_sampler_address_mode_gl(image->info.sampler.address_mode, &address_mode);
 	GL_CHECK(glTexParameteri(target, GL_TEXTURE_WRAP_S, address_mode));
 	GL_CHECK(glTexParameteri(target, GL_TEXTURE_WRAP_T, address_mode));
 
 	if (target == GL_TEXTURE_CUBE_MAP)
 		GL_CHECK(glTexParameteri(target, GL_TEXTURE_WRAP_R, address_mode));
 
-	GLenum filter;
-	cast_filter_gl(image->info.sampler_filter, &filter);
-	GL_CHECK(glTexParameteri(target, GL_TEXTURE_MIN_FILTER, filter));
-	GL_CHECK(glTexParameteri(target, GL_TEXTURE_MAG_FILTER, filter));
+	GLenum min_filter, mag_filter;
+	cast_filter_gl(image->info.sampler, &min_filter, &mag_filter);
+	GL_CHECK(glTexParameteri(target, GL_TEXTURE_MIN_FILTER, min_filter));
+	GL_CHECK(glTexParameteri(target, GL_TEXTURE_MAG_FILTER, mag_filter));
+
+	GL_CHECK(glTexParameterf(target, GL_TEXTURE_MIN_LOD, info->sampler.min_lod));
+	GL_CHECK(glTexParameterf(target, GL_TEXTURE_MAX_LOD, info->sampler.max_lod));
 }
 
 static void gl_destroy_image(VIOpenGL* gl, VIImage image)
@@ -2988,24 +2994,36 @@ static void cast_image_usages(VIImageUsageFlags in_usages, VkImageUsageFlags* ou
 
 static void cast_image_type(VIImageType in_type, VkImageType* out_type, VkImageViewType* out_view_type)
 {
-	const VIImageTypeEntry* entry = vi_image_type_entry + (int)in_type;
+	const VIImageTypeEntry* entry = vi_image_type_table + (int)in_type;
 	*out_type = entry->vk_type;
 	*out_view_type = entry->vk_view_type;
 }
 
 static void cast_image_type(VIImageType in_type, GLenum* out_type)
 {
-	*out_type = vi_image_type_entry[(int)in_type].gl_type;
+	*out_type = vi_image_type_table[(int)in_type].gl_type;
 }
 
 static void cast_filter_vk(VIFilter in_filter, VkFilter* out_filter)
 {
-	*out_filter = vi_filter_table[(int)in_filter].vk_filter;
+	*out_filter = vi_filter_table[(int)in_sampler.filter].vk_filter;
+	*out_mipmap_mode = vi_filter_table[(int)in_sampler.mipmap_filter].vk_mipmap_mode;
 }
 
 static void cast_filter_gl(VIFilter in_filter, GLenum* out_filter)
 {
-	*out_filter = vi_filter_table[(int)in_filter].gl_filter;
+	*out_mag_filter = vi_filter_table[(int)in_sampler.filter].gl_filter;
+
+	if (in_sampler.filter == VI_FILTER_LINEAR && in_sampler.mipmap_filter == VI_FILTER_LINEAR)
+		*out_min_filter = GL_LINEAR_MIPMAP_LINEAR;
+	else if (in_sampler.filter == VI_FILTER_LINEAR && in_sampler.mipmap_filter == VI_FILTER_NEAREST)
+		*out_min_filter = GL_LINEAR_MIPMAP_NEAREST;
+	else if (in_sampler.filter == VI_FILTER_NEAREST && in_sampler.mipmap_filter == VI_FILTER_LINEAR)
+		*out_min_filter = GL_NEAREST_MIPMAP_LINEAR;
+	else if (in_sampler.filter == VI_FILTER_NEAREST && in_sampler.mipmap_filter == VI_FILTER_NEAREST)
+		*out_min_filter = GL_NEAREST_MIPMAP_NEAREST;
+	else
+		VI_UNREACHABLE;
 }
 
 static void cast_sampler_address_mode_vk(VISamplerAddressMode in_address_mode, VkSamplerAddressMode* out_address_mode)
@@ -3513,6 +3531,8 @@ VIDevice vi_create_device_gl(const VIDeviceInfo* info, VIDeviceLimits* limits)
 	// TODO: gl_create_swapchain_pass(gl, device->swapchain_pass);
 	gl_create_swapchain_framebuffer(gl, device->swapchain_framebuffers);
 
+	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+
 	GLint gl_max_compute_workgroup_invocations;
 	GLint gl_max_compute_workgroup_count_x, gl_max_compute_workgroup_size_x;
 	GLint gl_max_compute_workgroup_count_y, gl_max_compute_workgroup_size_y;
@@ -3997,7 +4017,7 @@ VIImage vi_create_image(VIDevice device, const VIImageInfo* info)
 	imageCI.extent.width = info->width;
 	imageCI.extent.height = info->height;
 	imageCI.extent.depth = 1;
-	imageCI.mipLevels = 1;
+	imageCI.mipLevels = info->levels;
 	imageCI.arrayLayers = info->layers;
 	imageCI.imageType = type;
 	imageCI.format = format;
@@ -4019,13 +4039,15 @@ VIImage vi_create_image(VIDevice device, const VIImageInfo* info)
 	viewCI.subresourceRange.baseArrayLayer = 0;
 	viewCI.subresourceRange.baseMipLevel = 0;
 	viewCI.subresourceRange.layerCount = info->layers;
-	viewCI.subresourceRange.levelCount = 1;
+	viewCI.subresourceRange.levelCount = info->levels;
 	vk_create_image_view(vk, image, &viewCI);
 	
 	VkSamplerAddressMode address_mode;
+	cast_sampler_address_mode_vk(image->info.sampler.address_mode, &address_mode);
+
 	VkFilter filter;
-	cast_filter_vk(image->info.sampler_filter, &filter);
-	cast_sampler_address_mode_vk(image->info.sampler_address_mode, &address_mode);
+	VkSamplerMipmapMode mipmap_mode;
+	cast_filter_vk(image->info.sampler, &filter, &mipmap_mode);
 
 	VkSamplerCreateInfo samplerCI{};
 	samplerCI.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -4039,10 +4061,10 @@ VIImage vi_create_image(VIDevice device, const VIImageInfo* info)
 	samplerCI.borderColor;// TODO:
 	samplerCI.unnormalizedCoordinates = VK_FALSE;
 	samplerCI.compareEnable = VK_FALSE;
-	samplerCI.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	samplerCI.mipmapMode = mipmap_mode;
 	samplerCI.mipLodBias = 0.0f;
-	samplerCI.minLod = 0.0f;
-	samplerCI.maxLod = 0.0f;
+	samplerCI.minLod = info->sampler.min_lod;
+	samplerCI.maxLod = info->sampler.max_lod;
 	vk_create_sampler(vk, image, &samplerCI);
 
 	return image;
