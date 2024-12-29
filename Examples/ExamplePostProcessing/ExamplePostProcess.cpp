@@ -265,7 +265,7 @@ ExamplePostProcess::ExamplePostProcess(VIBackend backend)
 	mFrames.resize(mFramesInFlight);
 	for (size_t i = 0; i < mFrames.size(); i++)
 	{
-		VIImageInfo imageI;
+		VIImageInfo imageI{};
 		imageI.type = VI_IMAGE_TYPE_2D;
 		imageI.usage = VI_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VI_IMAGE_USAGE_SAMPLED_BIT;
 		imageI.properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
@@ -273,8 +273,6 @@ ExamplePostProcess::ExamplePostProcess(VIBackend backend)
 		imageI.width = APP_WINDOW_WIDTH;
 		imageI.height = APP_WINDOW_HEIGHT;
 		imageI.layers = 1;
-		imageI.sampler_address_mode = VI_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-		imageI.sampler_filter = VI_FILTER_LINEAR;
 		mFrames[i].scene_image = vi_create_image(mDevice, &imageI);
 
 		imageI.usage = VI_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
@@ -400,7 +398,7 @@ void ExamplePostProcess::Run()
 
 			vi_cmd_bind_set(frame->cmd, 0, frame->set, mPipelineRender);
 
-			for (std::shared_ptr<Mesh>& mesh : mMeshes)
+			for (std::shared_ptr<MeshData>& mesh : mMeshes)
 			{
 				vi_cmd_bind_vertex_buffers(frame->cmd, 0, 1, &mesh->VBO);
 				vi_cmd_bind_index_buffer(frame->cmd, mesh->IBO, VK_INDEX_TYPE_UINT32);

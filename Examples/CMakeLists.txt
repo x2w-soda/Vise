@@ -84,6 +84,7 @@ target_include_directories(vise_application PRIVATE
 	${imgui_SOURCE_DIR}
 	${imgui_SOURCE_DIR}/backends
 	${CMAKE_CURRENT_SOURCE_DIR}/../Extern/tinygltf
+	${CMAKE_CURRENT_SOURCE_DIR}/../Extern/stb
 )
 
 # we will include <imgui_impl_vulkan.h> in Application.cpp

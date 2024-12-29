@@ -35,7 +35,7 @@ private:
 	} mConfig;
 
 	std::vector<FrameData> mFrames;
-	std::vector<std::shared_ptr<Mesh>> mMeshes;
+	std::vector<std::shared_ptr<MeshData>> mMeshes;
 	VIPass mSceneRenderPass;
 	VIPass mPostProcessPass;
 	VIModule mVMRender, mFMRender;
