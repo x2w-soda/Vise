@@ -6,12 +6,10 @@ static char render_vertex_src[] = R"(
 #version 460
 layout (location = 0) in vec3 aPosition;
 layout (location = 1) in vec3 aNormal;
-layout (location = 2) in vec3 aAlbedo;
-layout (location = 3) in vec2 aTextureUV;
+layout (location = 2) in vec2 aTextureUV;
 layout (location = 0) out vec3 vPosition;
 layout (location = 1) out vec3 vNormal;
-layout (location = 2) out vec3 vAlbedo;
-layout (location = 3) out vec2 vTextureUV;
+layout (location = 2) out vec2 vTextureUV;
 
 layout (set = 0, binding = 0) uniform uFrameUBO
 {
@@ -23,7 +21,6 @@ void main()
 {
 	gl_Position = FrameUBO.proj * FrameUBO.view * vec4(aPosition, 1.0);
 	vNormal = aNormal;
-	vAlbedo = aAlbedo;
 	vTextureUV = aTextureUV;
 	vPosition = aPosition;
 }
@@ -33,9 +30,13 @@ static char render_fragment_src[] = R"(
 #version 460
 layout (location = 0) in vec3 vPosition;
 layout (location = 1) in vec3 vNormal;
-layout (location = 2) in vec3 vAlbedo;
-layout (location = 3) in vec2 vTextureUV;
+layout (location = 2) in vec2 vTextureUV;
 layout (location = 0) out vec4 fColor;
+
+layout (push_constant) uniform uPC
+{
+	vec4 color;
+} PC;
 
 void main()
 {
@@ -45,7 +46,8 @@ void main()
 	float diffuse_factor = max(dot(light_dir, normal), 0.0);
 	float albedo_factor = min(0.2 + diffuse_factor, 1.0);
 
-	fColor = vec4(albedo_factor * vAlbedo, 1.0);
+	vec3 albedo = PC.color.rgb;
+	fColor = vec4(albedo_factor * albedo, 1.0);
 }
 )";
 
@@ -126,7 +128,7 @@ ExamplePostProcess::ExamplePostProcess(VIBackend backend)
 
 		mPipelineLayout = CreatePipelineLayout(mDevice, {
 			mSetLayout
-		});
+		}, sizeof(glm::vec4));
 	}
 
 	// scene process pass description
@@ -390,6 +392,14 @@ void ExamplePostProcess::Run()
 		beginI.color_clear_value_count = 1;
 		beginI.depth_stencil_clear_value = &clear_depth;
 
+		glm::vec4 randomColors[4] = {
+			{ 0.8f, 0.1f, 0.1f, 1.0f },
+			{ 0.8f, 0.8f, 0.1f, 1.0f },
+			{ 0.1f, 0.1f, 0.8f, 1.0f },
+			{ 0.8f, 0.1f, 0.8f, 1.0f },
+		};
+		int colorPicker = 0;
+
 		vi_cmd_begin_pass(frame->cmd, &beginI);
 		{
 			vi_cmd_bind_pipeline(frame->cmd, mPipelineRender);
@@ -402,7 +412,11 @@ void ExamplePostProcess::Run()
 			{
 				vi_cmd_bind_vertex_buffers(frame->cmd, 0, 1, &mesh->VBO);
 				vi_cmd_bind_index_buffer(frame->cmd, mesh->IBO, VK_INDEX_TYPE_UINT32);
-			
+
+				glm::vec4 color = randomColors[colorPicker];
+				colorPicker = (colorPicker + 1) % ARRAY_LEN(randomColors);
+				vi_cmd_push_constants(frame->cmd, mPipelineLayout, 0, sizeof(color), &color);
+
 				VIDrawIndexedInfo info;
 				info.index_count = mesh->IndexCount;
 				info.index_start = 0;
@@ -464,12 +478,8 @@ void ExamplePostProcess::KeyCallback(GLFWwindow* window, int key, int scancode, 
 	if (action != GLFW_PRESS)
 		return;
 
-	switch (key)
+	if (key == GLFW_KEY_ESCAPE)
 	{
-	case GLFW_KEY_ESCAPE:
 		example->CameraToggleCapture();
-		break;
-	default:
-		break;
 	}
 }
