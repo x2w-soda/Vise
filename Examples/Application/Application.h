@@ -8,8 +8,8 @@
 #include <glm/gtx/quaternion.hpp>
 
 #define APP_DESIRED_FRAMES_IN_FLIGHT   2
-#define APP_WINDOW_WIDTH               1280
-#define APP_WINDOW_HEIGHT              720
+#define APP_WINDOW_WIDTH               1600
+#define APP_WINDOW_HEIGHT              900
 #define APP_WINDOW_ASPECT_RATIO        ((float)APP_WINDOW_WIDTH / (float)APP_WINDOW_HEIGHT)
 
 #define ARRAY_LEN(A) (sizeof(A) / sizeof(*(A)))

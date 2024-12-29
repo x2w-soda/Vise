@@ -76,6 +76,8 @@ add_library(vise_application
 	${CMAKE_CURRENT_SOURCE_DIR}/Application/Application.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/Application/Model.h
 	${CMAKE_CURRENT_SOURCE_DIR}/Application/Model.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/Application/Common.h
+	${CMAKE_CURRENT_SOURCE_DIR}/Application/Common.cpp
 )
 
 target_include_directories(vise_application PRIVATE

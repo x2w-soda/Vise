@@ -3004,13 +3004,13 @@ static void cast_image_type(VIImageType in_type, GLenum* out_type)
 	*out_type = vi_image_type_table[(int)in_type].gl_type;
 }
 
-static void cast_filter_vk(VIFilter in_filter, VkFilter* out_filter)
+static void cast_filter_vk(const VISamplerInfo& in_sampler, VkFilter* out_filter, VkSamplerMipmapMode* out_mipmap_mode)
 {
 	*out_filter = vi_filter_table[(int)in_sampler.filter].vk_filter;
 	*out_mipmap_mode = vi_filter_table[(int)in_sampler.mipmap_filter].vk_mipmap_mode;
 }
 
-static void cast_filter_gl(VIFilter in_filter, GLenum* out_filter)
+static void cast_filter_gl(const VISamplerInfo& in_sampler, GLenum* out_min_filter, GLenum* out_mag_filter)
 {
 	*out_mag_filter = vi_filter_table[(int)in_sampler.filter].gl_filter;
 
