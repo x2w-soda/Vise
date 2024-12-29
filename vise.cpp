@@ -439,6 +439,7 @@ struct VIOpenGL
 {
 	VIDevice vi_device;
 	GLenum index_type;
+	size_t index_size;
 	GLuint active_program;  // during execution
 	VIModule active_module; // during execution
 	VIFramebuffer active_framebuffer;
@@ -732,7 +733,7 @@ static void cast_compare_op_vk(VICompareOp in_op, VkCompareOp* out_op);
 static void cast_compare_op_gl(VICompareOp in_op, GLenum* out_op);
 static void cast_module_type_bit(VIModuleType in_type, EShLanguage* out_type);
 static void cast_module_type_bit(VIModuleType in_type, GLenum* out_type);
-static void cast_index_type(VkIndexType in_type, GLenum* out_type);
+static void cast_index_type(VkIndexType in_type, GLenum* out_type, size_t* out_size);
 static void cast_buffer_usages(VIBufferType in_type, VIBufferUsageFlags in_usages, VkBufferUsageFlags* out_usages);
 static void cast_buffer_type(VIBufferType in_type, GLenum* out_type);
 static void cast_image_usages(VIImageUsageFlags in_usages, VkImageUsageFlags* out_usages);
@@ -2246,10 +2247,11 @@ static void gl_cmd_execute_draw_indexed(VIDevice device, GLCommand* glcmd)
 {
 	VI_ASSERT(glcmd->type == GL_COMMAND_TYPE_DRAW_INDEXED);
 
+	size_t index_size = device->gl.index_size;
 	GLenum index_type = device->gl.index_type;
 	GLenum mode = GL_TRIANGLES; // TODO:
-	GLsizei count = (GLsizei)glcmd->draw_indexed.index_count;
-	GLint base_vertex = (GLint)glcmd->draw_indexed.index_start;
+	GLsizei index_count = (GLsizei)glcmd->draw_indexed.index_count;
+	GLint base_index = (GLint)glcmd->draw_indexed.index_start;
 	GLuint base_instance = (GLuint)glcmd->draw_indexed.instance_start;
 	GLsizei instance_count = (GLsizei)glcmd->draw_indexed.instance_count;
 
@@ -2257,7 +2259,7 @@ static void gl_cmd_execute_draw_indexed(VIDevice device, GLCommand* glcmd)
 	if (location >= 0)
 		glUniform1i(location, glcmd->draw.instance_start);
 
-	glDrawElementsInstancedBaseVertexBaseInstance(mode, count, index_type, nullptr, instance_count, base_vertex, base_instance);
+	glDrawElementsInstancedBaseVertexBaseInstance(mode, index_count, index_type, (const void*)(base_index * index_size), instance_count, 0, base_instance);
 }
 
 static void gl_cmd_execute_push_constants(VIDevice device, GLCommand* glcmd)
@@ -2447,9 +2449,11 @@ static void gl_cmd_execute_bind_index_buffer(VIDevice device, GLCommand* glcmd)
 
 	GLuint ibo = glcmd->bind_index_buffer.buffer->gl.handle;
 	GLenum index_type;
+	size_t index_size;
 
-	cast_index_type(glcmd->bind_index_buffer.index_type, &index_type);
+	cast_index_type(glcmd->bind_index_buffer.index_type, &index_type, &index_size);
 	device->gl.index_type = index_type;
+	device->gl.index_size = index_size;
 
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
 }
@@ -2898,15 +2902,17 @@ static void cast_module_type_bit(VIModuleType in_type, GLenum* out_type)
 	}
 }
 
-static void cast_index_type(VkIndexType in_type, GLenum* out_type)
+static void cast_index_type(VkIndexType in_type, GLenum* out_type, size_t* out_size)
 {
 	switch (in_type)
 	{
 	case VK_INDEX_TYPE_UINT16:
 		*out_type = GL_UNSIGNED_SHORT;
+		*out_size = 2;
 		break;
 	case VK_INDEX_TYPE_UINT32:
 		*out_type = GL_UNSIGNED_INT;
+		*out_size = 4;
 		break;
 	default:
 		VI_UNREACHABLE;
