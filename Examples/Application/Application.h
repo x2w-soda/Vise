@@ -12,6 +12,12 @@
 #define APP_WINDOW_HEIGHT              900
 #define APP_WINDOW_ASPECT_RATIO        ((float)APP_WINDOW_WIDTH / (float)APP_WINDOW_HEIGHT)
 
+#ifdef WIN32
+# define APP_PATH "../"
+#else
+# define APP_PATH ""
+#endif
+
 #define ARRAY_LEN(A) (sizeof(A) / sizeof(*(A)))
 
 // helper to reduce set layout creation verbosity
