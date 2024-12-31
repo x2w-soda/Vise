@@ -24,10 +24,32 @@ Abstractions across both backends:
 	- Storage Buffer `DONE`
 	- Stroage Image `DONE`
 - Pipeline Push Constants. `TODO`
+- Indirect Draw `TODO`
 - Offline Compilation of Vise GLSL shaders. `TODO`
 - Multithreaded Command Buffer Recording. `TODO`
 
+To build examples manually:
+
+```
+git clone https://github.com/x2w-soda/Vise.git
+cd Vise
+git submodule init
+git submodule update
+mkdir Build && cd Build
+cmake ../
+```
+
+Remember to update submodules, the binary assets are stored in another repository with git LFS.
+
 On windows, `Built.bat` will build the examples and tests.
+
+## Screenshots
+
+Screenshots from example applications.
+
+![PBR](Screenshots/pbr_ibl.png)
+
+PBR Example, with Image Based Lighting.
 
 ## Credits
 
