@@ -778,7 +778,12 @@ void ExamplePBR::Run()
 	mSceneUBO.metallic_state = 2;
 	mSceneUBO.clamp_max_roughness = 1.0f;
 
+	const char* logoModelPath = mBackend == VI_BACKEND_OPENGL ?
+		APP_PATH "../../Assets/gltf/opengl_logo/scene.gltf" :
+		APP_PATH "../../Assets/gltf/vulkan_logo/scene.gltf";
+
 	mModel = GLTFModel::LoadFromFile(APP_PATH "../../Assets/gltf/hard_surface_crate/scene.gltf", mDevice, mSetLayoutMaterial);
+	mLogoModel = GLTFModel::LoadFromFile(logoModelPath, mDevice, mSetLayoutMaterial);
 	
 	// These may and should be done offline instead of during application startup
 	// 1. convert HDRI (RGB32F) to regular cubemap (RGBA16F per face)
@@ -850,7 +855,8 @@ void ExamplePBR::Run()
 			{
 				vi_cmd_bind_graphics_set(frame->cmd, mPipelineLayoutPBR, 0, frame->scene_set);
 
-				mModel->Draw(frame->cmd, mPBRPipeline, mPipelineLayoutPBR);
+				mModel->Draw(frame->cmd, mPipelineLayoutPBR);
+				mLogoModel->Draw(frame->cmd, mPipelineLayoutPBR);
 			}
 
 			Application::ImGuiRender(frame->cmd);

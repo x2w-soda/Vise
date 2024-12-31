@@ -289,13 +289,12 @@ GLTFModel::~GLTFModel()
 	mEmptyTexture.Image = VI_NULL;
 }
 
-void GLTFModel::Draw(VICommand cmd, VIPipeline pipeline, VIPipelineLayout layout)
+void GLTFModel::Draw(VICommand cmd, VIPipelineLayout layout)
 {
 	vi_cmd_bind_vertex_buffers(cmd, 0, 1, &mVBO);
 	vi_cmd_bind_index_buffer(cmd, mIBO, VK_INDEX_TYPE_UINT32);
 
 	mDrawMaterial = nullptr;
-	mDrawPipeline = pipeline;
 	mDrawPipelineLayout = layout;
 
 	for (GLTFNode* node : mRootNodes)

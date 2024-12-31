@@ -94,6 +94,7 @@ private: // resources for baking
 private: // runtime resources
 
 	std::shared_ptr<GLTFModel> mModel;
+	std::shared_ptr<GLTFModel> mLogoModel;
 	std::vector<FrameData> mFrames;
 	VICommandPool mCmdPool;
 	VIBuffer mSkyboxVBO;

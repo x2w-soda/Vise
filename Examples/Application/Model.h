@@ -182,7 +182,7 @@ public:
 
 	GLTFModel& operator=(const GLTFModel&) = delete;
 
-	void Draw(VICommand cmd, VIPipeline pipeline, VIPipelineLayout layout);
+	void Draw(VICommand cmd, VIPipelineLayout layout);
 
 	static std::shared_ptr<GLTFModel> LoadFromFile(const char* path, VIDevice device, VISetLayout materialSL);
 
@@ -206,8 +206,7 @@ private:
 	VIBuffer mVBO = VI_NULL;
 	VIBuffer mIBO = VI_NULL;
 	VISetPool mSetPool = VI_NULL;
-	VIPipeline mDrawPipeline = VI_NULL;
-	VIPipelineLayout mDrawPipelineLayout = VI_NULL; // TODO: remove, fix vi_cmd_bind_graphics_set
+	VIPipelineLayout mDrawPipelineLayout = VI_NULL;
 	GLTFMaterial* mDrawMaterial;
 	GLTFVertex* mVertices;
 	GLTFTexture mEmptyTexture;
