@@ -153,7 +153,7 @@ void TestPipelineBlend::Run()
 	const glm::vec4 transparent_b(0.0f, 0.0f, 1.0f, 0.5f);
 
 	{
-		vi_cmd_bind_pipeline(cmd, mPipelineBlendDisabled);
+		vi_cmd_bind_graphics_pipeline(cmd, mPipelineBlendDisabled);
 		vi_cmd_set_viewport(cmd, MakeViewport(TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT));
 		vi_cmd_set_scissor(cmd, MakeScissor(TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT));
 
@@ -168,7 +168,7 @@ void TestPipelineBlend::Run()
 		vi_cmd_draw(cmd, &drawI);
 	}
 	{
-		vi_cmd_bind_pipeline(cmd, mPipelineBlendDefault);
+		vi_cmd_bind_graphics_pipeline(cmd, mPipelineBlendDefault);
 		vi_cmd_set_viewport(cmd, MakeViewport(TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT));
 		vi_cmd_set_scissor(cmd, MakeScissor(TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT));
 
@@ -183,7 +183,7 @@ void TestPipelineBlend::Run()
 		vi_cmd_draw(cmd, &drawI);
 	}
 	{
-		vi_cmd_bind_pipeline(cmd, mPipelineBlendColorAdd);
+		vi_cmd_bind_graphics_pipeline(cmd, mPipelineBlendColorAdd);
 		vi_cmd_set_viewport(cmd, MakeViewport(TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT));
 		vi_cmd_set_scissor(cmd, MakeScissor(TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT));
 
@@ -198,7 +198,7 @@ void TestPipelineBlend::Run()
 		vi_cmd_draw(cmd, &drawI);
 	}
 	{
-		vi_cmd_bind_pipeline(cmd, mPipelineBlendColorMax);
+		vi_cmd_bind_graphics_pipeline(cmd, mPipelineBlendColorMax);
 		vi_cmd_set_viewport(cmd, MakeViewport(TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT));
 		vi_cmd_set_scissor(cmd, MakeScissor(TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT));
 

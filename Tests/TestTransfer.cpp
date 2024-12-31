@@ -213,11 +213,11 @@ void TestTransfer::TestFullCopy()
 		vi_cmd_begin_pass(cmd, &passBI);
 
 		barrier.dst_access = VK_ACCESS_SHADER_READ_BIT;
-		vi_cmd_bind_pipeline(cmd, mPipeline);
+		vi_cmd_bind_graphics_pipeline(cmd, mPipeline);
 		vi_cmd_set_viewport(cmd, MakeViewport(TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT));
 		vi_cmd_set_scissor(cmd, MakeScissor(TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT));
 
-		vi_cmd_bind_set(cmd, 0, setImage2, mPipeline);
+		vi_cmd_bind_graphics_set(cmd, mPipelineLayout, 0, setImage2);
 
 		glm::vec4 pc(-0.5f, 0.5f, 0.0f, 0.0f);
 		vi_cmd_push_constants(cmd, mPipelineLayout, 0, sizeof(pc), &pc);
@@ -229,7 +229,7 @@ void TestTransfer::TestFullCopy()
 		drawI.instance_start = 0;
 		vi_cmd_draw(cmd, &drawI);
 
-		vi_cmd_bind_set(cmd, 0, setImage3, mPipeline);
+		vi_cmd_bind_graphics_set(cmd, mPipelineLayout, 0, setImage3);
 
 		pc = glm::vec4(0.5f, 0.5f, 0.0f, 0.0f);
 		vi_cmd_push_constants(cmd, mPipelineLayout, 0, sizeof(pc), &pc);

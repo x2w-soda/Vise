@@ -135,7 +135,7 @@ void TestDriver::Run()
 	vi_cmd_bind_compute_pipeline(cmd, mMSEPipeline);
 	for (MSETest& test : mTests)
 	{
-		vi_cmd_bind_set(cmd, 0, test.MSESet, mMSEPipeline);
+		vi_cmd_bind_compute_set(cmd, mMSEPipelineLayout, 0, test.MSESet);
 		vi_cmd_dispatch(cmd, workgroup_x, workgroup_y, 1);
 	}
 	vi_end_command(cmd);

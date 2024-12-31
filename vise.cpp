@@ -533,8 +533,7 @@ struct GLCommandBindSet
 {
 	VISet set;
 	uint32_t set_index;
-	VIPipeline pipeline;
-	VIComputePipeline compute_pipeline;
+	VIPipelineLayout pipeline_layout;
 };
 
 struct GLCommandBindVertexBuffers
@@ -2307,19 +2306,11 @@ static void gl_cmd_execute_bind_set(VIDevice device, GLCommand* glcmd)
 
 	uint32_t set_idx = glcmd->bind_set.set_index;
 	VISet set = glcmd->bind_set.set;
-	VIPipelineLayout pipeline_layout;
+	VIPipelineLayout pipeline_layout = glcmd->bind_set.pipeline_layout;
 	VIBuffer buffer;
 	VIImage image;
 	GLenum internal_format;
 	GLenum data_format, data_type;
-
-	if (glcmd->bind_set.pipeline != VI_NULL)
-		pipeline_layout = glcmd->bind_set.pipeline->layout;
-	else if (glcmd->bind_set.compute_pipeline != VI_NULL)
-		pipeline_layout = glcmd->bind_set.compute_pipeline->layout;
-	else
-		VI_UNREACHABLE;
-
 	uint32_t texel_size;
 	uint32_t remapped_binding;
 	uint32_t binding_count = (uint32_t)set->layout->bindings.size();
@@ -5097,7 +5088,7 @@ void vi_cmd_end_pass(VICommand cmd)
 	vkCmdEndRenderPass(cmd->vk.handle);
 }
 
-void vi_cmd_bind_pipeline(VICommand cmd, VIPipeline pipeline)
+void vi_cmd_bind_graphics_pipeline(VICommand cmd, VIPipeline pipeline)
 {
 	cmd->device->active_pipeline = pipeline;
 
@@ -5194,34 +5185,32 @@ void vi_cmd_bind_index_buffer(VICommand cmd, VIBuffer buffer, VkIndexType index_
 	vkCmdBindIndexBuffer(cmd->vk.handle, buffer->vk.handle, 0, index_type);
 }
 
-void vi_cmd_bind_set(VICommand cmd, uint32_t set_idx, VISet set, VIPipeline pipeline)
+void vi_cmd_bind_graphics_set(VICommand cmd, VIPipelineLayout layout, uint32_t set_idx, VISet set)
 {
 	if (cmd->device->backend == VI_BACKEND_OPENGL)
 	{
 		GLCommand* glcmd = gl_append_command(cmd, GL_COMMAND_TYPE_BIND_SET);
 		glcmd->bind_set.set = set;
 		glcmd->bind_set.set_index = set_idx;
-		glcmd->bind_set.pipeline = pipeline;
-		glcmd->bind_set.compute_pipeline = VI_NULL;
+		glcmd->bind_set.pipeline_layout = layout;
 		return;
 	}
 
-	vkCmdBindDescriptorSets(cmd->vk.handle, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->layout->vk.handle, set_idx, 1, &set->vk.handle, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd->vk.handle, VK_PIPELINE_BIND_POINT_GRAPHICS, layout->vk.handle, set_idx, 1, &set->vk.handle, 0, nullptr);
 }
 
-void vi_cmd_bind_set(VICommand cmd, uint32_t set_idx, VISet set, VIComputePipeline pipeline)
+void vi_cmd_bind_compute_set(VICommand cmd, VIPipelineLayout layout, uint32_t set_idx, VISet set)
 {
 	if (cmd->device->backend == VI_BACKEND_OPENGL)
 	{
 		GLCommand* glcmd = gl_append_command(cmd, GL_COMMAND_TYPE_BIND_SET);
 		glcmd->bind_set.set = set;
 		glcmd->bind_set.set_index = set_idx;
-		glcmd->bind_set.pipeline = VI_NULL;
-		glcmd->bind_set.compute_pipeline = pipeline;
+		glcmd->bind_set.pipeline_layout = layout;
 		return;
 	}
 
-	vkCmdBindDescriptorSets(cmd->vk.handle, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->layout->vk.handle, set_idx, 1, &set->vk.handle, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd->vk.handle, VK_PIPELINE_BIND_POINT_COMPUTE, layout->vk.handle, set_idx, 1, &set->vk.handle, 0, nullptr);
 }
 
 void vi_cmd_push_constants(VICommand cmd, VIPipelineLayout layout, uint32_t offset, uint32_t size, const void* value)

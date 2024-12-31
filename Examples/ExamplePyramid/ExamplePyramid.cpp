@@ -223,11 +223,11 @@ void ExamplePyramid::Run()
 		vi_begin_command(frame->cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 		vi_cmd_begin_pass(frame->cmd, &beginI);
 		{
-			vi_cmd_bind_pipeline(frame->cmd, mPipeline);
+			vi_cmd_bind_graphics_pipeline(frame->cmd, mPipeline);
 			vi_cmd_set_viewport(frame->cmd, MakeViewport(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT));
 			vi_cmd_set_scissor(frame->cmd, MakeScissor(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT));
 
-			vi_cmd_bind_set(frame->cmd, 0, frame->set, mPipeline);
+			vi_cmd_bind_graphics_set(frame->cmd, mPipelineLayout, 0, frame->set);
 			vi_cmd_bind_vertex_buffers(frame->cmd, 0, 1, &mVBO);
 			vi_cmd_bind_index_buffer(frame->cmd, mIBO, VK_INDEX_TYPE_UINT32);
 

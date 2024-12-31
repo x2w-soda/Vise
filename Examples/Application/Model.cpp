@@ -313,7 +313,7 @@ void GLTFModel::DrawNode(VICommand cmd, GLTFNode* node)
 			if (mDrawMaterial != prim.Material)
 			{
 				mDrawMaterial = prim.Material;
-				vi_cmd_bind_set(cmd, 1, prim.Material->Set, mDrawPipeline);
+				vi_cmd_bind_graphics_set(cmd, mDrawPipelineLayout, 1, prim.Material->Set);
 			}
 
 			glm::mat4 transform = node->Transform;

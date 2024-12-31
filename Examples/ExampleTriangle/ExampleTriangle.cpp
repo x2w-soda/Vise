@@ -141,7 +141,7 @@ void ExampleTriangle::RecordCommands()
 
 		vi_cmd_begin_pass(cmd, &beginI);
 		{
-			vi_cmd_bind_pipeline(cmd, mPipeline);
+			vi_cmd_bind_graphics_pipeline(cmd, mPipeline);
 			vi_cmd_set_viewport(cmd, MakeViewport(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT));
 			vi_cmd_set_scissor(cmd, MakeScissor(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT));
 

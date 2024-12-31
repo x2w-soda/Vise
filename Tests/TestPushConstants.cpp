@@ -170,7 +170,7 @@ void TestPushConstants::Run()
 
 		constexpr uint32_t offset = sizeof(float) * 16;
 
-		vi_cmd_bind_pipeline(cmd, mTestPipeline1);
+		vi_cmd_bind_graphics_pipeline(cmd, mTestPipeline1);
 		vi_cmd_set_viewport(cmd, MakeViewport(TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT));
 		vi_cmd_set_scissor(cmd, MakeScissor(TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT));
 
@@ -190,7 +190,7 @@ void TestPushConstants::Run()
 		// Even though Pipeline2 uses a different push_constant block compared to Pipeline1,
 		// they are both under 128 bytes and therefore share the same push constant layout.
 
-		vi_cmd_bind_pipeline(cmd, mTestPipeline2);
+		vi_cmd_bind_graphics_pipeline(cmd, mTestPipeline2);
 		vi_cmd_set_viewport(cmd, MakeViewport(TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT));
 		vi_cmd_set_scissor(cmd, MakeScissor(TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT));
 

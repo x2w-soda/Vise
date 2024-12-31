@@ -152,7 +152,7 @@ void TestBuiltins::Run()
 		area.maxDepth = 1.0f;
 		area.width = TEST_WINDOW_WIDTH / 2.0f;
 		area.height = TEST_WINDOW_HEIGHT / 2.0f;
-		vi_cmd_bind_pipeline(cmd, mTestPipeline1);
+		vi_cmd_bind_graphics_pipeline(cmd, mTestPipeline1);
 		vi_cmd_set_viewport(cmd, area);
 		vi_cmd_set_scissor(cmd, MakeScissor(TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT));
 
@@ -166,7 +166,7 @@ void TestBuiltins::Run()
 
 		area.x = TEST_WINDOW_WIDTH / 2.0f;
 		area.y = TEST_WINDOW_HEIGHT / 2.0f;
-		vi_cmd_bind_pipeline(cmd, mTestPipeline2);
+		vi_cmd_bind_graphics_pipeline(cmd, mTestPipeline2);
 		vi_cmd_set_viewport(cmd, area);
 		vi_cmd_set_scissor(cmd, MakeScissor(TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT));
 

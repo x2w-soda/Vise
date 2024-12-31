@@ -402,11 +402,11 @@ void ExamplePostProcess::Run()
 
 		vi_cmd_begin_pass(frame->cmd, &beginI);
 		{
-			vi_cmd_bind_pipeline(frame->cmd, mPipelineRender);
+			vi_cmd_bind_graphics_pipeline(frame->cmd, mPipelineRender);
 			vi_cmd_set_viewport(frame->cmd, MakeViewport(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT));
 			vi_cmd_set_scissor(frame->cmd, MakeScissor(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT));
 
-			vi_cmd_bind_set(frame->cmd, 0, frame->set, mPipelineRender);
+			vi_cmd_bind_graphics_set(frame->cmd, mPipelineLayout, 0, frame->set);
 
 			for (std::shared_ptr<MeshData>& mesh : mMeshes)
 			{
@@ -434,13 +434,13 @@ void ExamplePostProcess::Run()
 		beginI.depth_stencil_clear_value = &clear_depth;
 		vi_cmd_begin_pass(frame->cmd, &beginI);
 		{
-			vi_cmd_bind_pipeline(frame->cmd, mConfig.postprocess_pipeline);
+			vi_cmd_bind_graphics_pipeline(frame->cmd, mConfig.postprocess_pipeline);
 			vi_cmd_set_viewport(frame->cmd, MakeViewport(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT));
 			vi_cmd_set_scissor(frame->cmd, MakeScissor(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT));
 
 			vi_cmd_bind_vertex_buffers(frame->cmd, 0, 1, &mQuadVBO);
 			vi_cmd_bind_index_buffer(frame->cmd, mQuadIBO, VK_INDEX_TYPE_UINT32);
-			vi_cmd_bind_set(frame->cmd, 0, frame->set, mPipelineGrayscale);
+			vi_cmd_bind_graphics_set(frame->cmd, mPipelineLayout, 0, frame->set);
 
 			VIDrawIndexedInfo info;
 			info.index_count = 6;

@@ -550,13 +550,13 @@ VI_API void vi_cmd_copy_image_to_buffer(VICommand cmd, VIImage image, VkImageLay
 // VI_API void vi_cmd_copy_depth_stencil_attachment_to_buffer(VICommand cmd, VIFramebuffer framebuffer, VIBuffer buffer);
 VI_API void vi_cmd_begin_pass(VICommand cmd, const VIPassBeginInfo* info);
 VI_API void vi_cmd_end_pass(VICommand cmd);
-VI_API void vi_cmd_bind_pipeline(VICommand cmd, VIPipeline pipeline);
+VI_API void vi_cmd_bind_graphics_pipeline(VICommand cmd, VIPipeline pipeline);
 VI_API void vi_cmd_bind_compute_pipeline(VICommand cmd, VIComputePipeline pipeline);
 VI_API void vi_cmd_dispatch(VICommand cmd, uint32_t workgroup_x, uint32_t workgroup_y, uint32_t workgroup_z);
 VI_API void vi_cmd_bind_vertex_buffers(VICommand cmd, uint32_t first_binding, uint32_t binding_count, VIBuffer* buffers);
 VI_API void vi_cmd_bind_index_buffer(VICommand cmd, VIBuffer buffer, VkIndexType index_type);
-VI_API void vi_cmd_bind_set(VICommand cmd, uint32_t set_idx, VISet set, VIPipeline pipeline);
-VI_API void vi_cmd_bind_set(VICommand cmd, uint32_t set_idx, VISet set, VIComputePipeline pipeline);
+VI_API void vi_cmd_bind_graphics_set(VICommand cmd, VIPipelineLayout layout, uint32_t set_idx, VISet set);
+VI_API void vi_cmd_bind_compute_set(VICommand cmd, VIPipelineLayout layout, uint32_t set_idx, VISet set);
 VI_API void vi_cmd_push_constants(VICommand cmd, VIPipelineLayout layout, uint32_t offset, uint32_t size, const void* value);
 VI_API void vi_cmd_set_viewport(VICommand cmd, VkViewport viewport);
 VI_API void vi_cmd_set_scissor(VICommand cmd, VkRect2D scissor);
