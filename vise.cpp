@@ -684,6 +684,7 @@ static int gl_device_flush_submission(VIDevice device);
 static void gl_create_module(VIDevice device, VIModule module, const VIModuleInfo* info);
 static void gl_destroy_module(VIDevice device, VIModule module);
 static void gl_create_pipeline_layout(VIDevice device, VIPipelineLayout layout, const VIPipelineLayoutInfo* info);
+static void gl_remap(std::vector<GLRemap>& remaps, uint32_t set_count, uint32_t* binding_counts, const VISetBinding** bindings);
 static void gl_destroy_pipeline_layout(VIDevice device, VIPipelineLayout layout);
 static void gl_create_pipeline(VIDevice device, VIPipeline pipeline, VIModule vm, VIModule fm);
 static void gl_destroy_pipeline(VIDevice device, VIPipeline pipeline);
@@ -733,7 +734,7 @@ static void gl_cmd_execute_copy_image_to_buffer(VIDevice device, GLCommand* glcm
 static void gl_cmd_execute_dispatch(VIDevice device, GLCommand* glcmd);
 
 static void compile_vk(VICompileResult& result, EShLanguage stage, const char* vise_glsl);
-static void compile_gl(VICompileResult& result, EShLanguage stage, const char* vise_glsl, VIPipelineLayout layout);
+static void compile_gl(VICompileResult& result, EShLanguage stage, const char* vise_glsl, uint32_t remap_count, const GLRemap* remaps);
 static void flip_image_data(uint8_t* data, uint32_t image_width, uint32_t image_height, uint32_t texel_size);
 
 static void debug_print_compilation(const spirv_cross::CompilerGLSL& compiler, EShLanguage stage);
@@ -1614,7 +1615,9 @@ static void gl_create_module(VIDevice device, VIModule module, const VIModuleInf
 	cast_module_type_gl(info->type, &glstage);
 
 	VICompileResult result;
-	compile_gl(result, stage, info->vise_glsl, info->pipeline_layout);
+	uint32_t remap_count = info->pipeline_layout->gl.remap_count;
+	const GLRemap* remaps = info->pipeline_layout->gl.remaps;
+	compile_gl(result, stage, info->vise_glsl, remap_count, remaps);
 	VI_ASSERT(result.success && "gl_create_module failed");
 
 	GLint glsl_size = result.gl_patched.size() + 1;
@@ -1668,26 +1671,52 @@ static void gl_destroy_module(VIDevice device, VIModule module)
 static void gl_create_pipeline_layout(VIDevice device, VIPipelineLayout layout, const VIPipelineLayoutInfo* info)
 {
 	uint32_t set_count = layout->set_layouts.size();
+	std::vector<uint32_t> binding_counts(set_count);
+	std::vector<const VISetBinding*> set_bindings(set_count);
+
+	for (uint32_t i = 0; i < set_count; i++)
+	{
+		binding_counts[i] = (uint32_t)layout->set_layouts[i]->bindings.size();
+	
+		for (uint32_t j = 0; j < binding_counts[i]; j++)
+			set_bindings[i] = layout->set_layouts[i]->bindings.data();
+	}
 
 	std::vector<GLRemap> remaps;
+	gl_remap(remaps, set_count, binding_counts.data(), set_bindings.data());
+
+	uint32_t remap_count = (uint32_t)remaps.size();
+	layout->gl.remap_count = remap_count;
+
+	if (remap_count > 0)
+	{
+		layout->gl.remaps = (GLRemap*)vi_malloc(sizeof(GLRemap) * remap_count);
+		for (uint32_t i = 0; i < remap_count; i++)
+			layout->gl.remaps[i] = remaps[i];
+	}
+	else
+		layout->gl.remaps = nullptr;
+}
+
+static void gl_remap(std::vector<GLRemap>& remaps, uint32_t set_count, uint32_t* binding_counts, const VISetBinding** bindings)
+{
+	remaps.clear();
 
 	uint32_t buffer_remap_count = 0;
 	uint32_t image_remap_count = 0;
 
 	for (uint32_t set_idx = 0; set_idx < set_count; set_idx++)
 	{
-		VISetLayout set_layout = layout->set_layouts[set_idx];
-		uint32_t binding_count = set_layout->bindings.size();
+		uint32_t binding_count = binding_counts[set_idx];
 
 		for (uint32_t i = 0; i < binding_count; i++)
 		{
-			VI_ASSERT(set_layout->bindings[i].array_count == 1); // TODO: support array of bindings
-
-			uint32_t binding_idx = set_layout->bindings[i].idx;
+			const VISetBinding* binding = bindings[set_idx] + i;
+			VI_ASSERT(binding->array_count == 1); // TODO: support array of bindings
 
 			GLRemap remap;
-			remap.type = set_layout->bindings[i].type;
-			remap.vk_set_binding = set_idx * 100 + binding_idx;
+			remap.type = binding->type;
+			remap.vk_set_binding = set_idx * 100 + binding->idx;
 
 			switch (remap.type)
 			{
@@ -1708,18 +1737,6 @@ static void gl_create_pipeline_layout(VIDevice device, VIPipelineLayout layout, 
 			remaps.push_back(remap);
 		}
 	}
-
-	uint32_t remap_count = (uint32_t)remaps.size();
-	layout->gl.remap_count = remap_count;
-
-	if (remap_count > 0)
-	{
-		layout->gl.remaps = (GLRemap*)vi_malloc(sizeof(GLRemap) * remap_count);
-		for (uint32_t i = 0; i < remap_count; i++)
-			layout->gl.remaps[i] = remaps[i];
-	}
-	else
-		layout->gl.remaps = nullptr;
 }
 
 static void gl_destroy_pipeline_layout(VIDevice device, VIPipelineLayout layout)
@@ -2726,7 +2743,7 @@ static void compile_vk(VICompileResult& result, EShLanguage stage, const char* v
 	result.success = true;
 }
 
-static void compile_gl(VICompileResult& result, EShLanguage stage, const char* vise_glsl, VIPipelineLayout layout)
+static void compile_gl(VICompileResult& result, EShLanguage stage, const char* vise_glsl, uint32_t remap_count, const GLRemap* remaps)
 {
 	result = VICompileResult{};
 
@@ -2743,15 +2760,15 @@ static void compile_gl(VICompileResult& result, EShLanguage stage, const char* v
 
 		const spirv_cross::ShaderResources& resources = compiler.get_shader_resources();
 
-		auto perform_remap = [](spirv_cross::ID id, spirv_cross::CompilerGLSL& compiler, VIPipelineLayout layout) -> bool {
+		auto perform_remap = [](spirv_cross::ID id, spirv_cross::CompilerGLSL& compiler, uint32_t remap_count, const GLRemap* remaps) -> bool {
 			bool success = false;
 			uint32_t set_idx = compiler.get_decoration(id, spv::DecorationDescriptorSet);
 			uint32_t binding_idx = compiler.get_decoration(id, spv::DecorationBinding);
 			uint32_t vk_set_binding = set_idx * 100 + binding_idx;
 
-			for (uint32_t j = 0; j < layout->gl.remap_count; j++)
+			for (uint32_t j = 0; j < remap_count; j++)
 			{
-				GLRemap* remap = layout->gl.remaps + j;
+				const GLRemap* remap = remaps + j;
 
 				if (vk_set_binding == remap->vk_set_binding)
 				{
@@ -2810,28 +2827,28 @@ static void compile_gl(VICompileResult& result, EShLanguage stage, const char* v
 		for (size_t i = 0; i < resources.uniform_buffers.size(); i++)
 		{
 			spirv_cross::ID id = resources.uniform_buffers[i].id;
-			bool found_remap = perform_remap(id, compiler, layout);
+			bool found_remap = perform_remap(id, compiler, remap_count, remaps);
 			VI_ASSERT(found_remap && "failed to remap OpenGL uniform buffer binding");
 		}
 
 		for (size_t i = 0; i < resources.storage_buffers.size(); i++)
 		{
 			spirv_cross::ID id = resources.storage_buffers[i].id;
-			bool found_remap = perform_remap(id, compiler, layout);
+			bool found_remap = perform_remap(id, compiler, remap_count, remaps);
 			VI_ASSERT(found_remap && "failed to remap OpenGL shader storage buffer binding");
 		}
 
 		for (size_t i = 0; i < resources.sampled_images.size(); i++)
 		{
 			spirv_cross::ID id = resources.sampled_images[i].id;
-			bool found_remap = perform_remap(id, compiler, layout);
+			bool found_remap = perform_remap(id, compiler, remap_count, remaps);
 			VI_ASSERT(found_remap && "failed to remap OpenGL sampler binding");
 		}
 
 		for (size_t i = 0; i < resources.storage_images.size(); i++)
 		{
 			spirv_cross::ID id = resources.storage_images[i].id;
-			bool found_remap = perform_remap(id, compiler, layout);
+			bool found_remap = perform_remap(id, compiler, remap_count, remaps);
 			VI_ASSERT(found_remap && "failed to remap OpenGL storage image binding");
 		}
 		
