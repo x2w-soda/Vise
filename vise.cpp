@@ -113,6 +113,7 @@ struct VIFrame;
 struct VIOpenGL;
 struct GLPushConstant;
 struct HostMalloc;
+struct VICompileResult;
 
 static void* vi_malloc(size_t size);
 static void vi_free(void* ptr);
@@ -482,6 +483,15 @@ struct VIVulkan
 	} swapchain;
 };
 
+struct VICompileResult
+{
+	bool success;
+	std::string error;
+	std::string gl_patched;
+	std::vector<GLPushConstant> gl_push_constants;
+	std::vector<char> vk_spirv;
+};
+
 enum GLCommandType
 {
 	GL_COMMAND_TYPE_OPENGL_CALLBACK = 0,
@@ -722,16 +732,17 @@ static void gl_cmd_execute_copy_image(VIDevice device, GLCommand* glcmd);
 static void gl_cmd_execute_copy_image_to_buffer(VIDevice device, GLCommand* glcmd);
 static void gl_cmd_execute_dispatch(VIDevice device, GLCommand* glcmd);
 
-static bool compile_vk(const char* src, std::vector<char>& byte_code, EShLanguage stage, const char* entry_point);
-static bool compile_gl(VIModule module, VIPipelineLayout layout, const char* src, std::string& patched, EShLanguage stage, const char* entry_point);
+static void compile_vk(VICompileResult& result, EShLanguage stage, const char* vise_glsl);
+static void compile_gl(VICompileResult& result, EShLanguage stage, const char* vise_glsl, VIPipelineLayout layout);
 static void flip_image_data(uint8_t* data, uint32_t image_width, uint32_t image_height, uint32_t texel_size);
 
 static void debug_print_compilation(const spirv_cross::CompilerGLSL& compiler, EShLanguage stage);
 
 static void cast_compare_op_vk(VICompareOp in_op, VkCompareOp* out_op);
 static void cast_compare_op_gl(VICompareOp in_op, GLenum* out_op);
-static void cast_module_type_bit(VIModuleType in_type, EShLanguage* out_type);
-static void cast_module_type_bit(VIModuleType in_type, GLenum* out_type);
+static void cast_module_type_vk(VIModuleType in_type, VkShaderStageFlags* out_stages);
+static void cast_module_type_glslang(VIModuleType in_type, EShLanguage* out_type);
+static void cast_module_type_gl(VIModuleType in_type, GLenum* out_type);
 static void cast_index_type(VkIndexType in_type, GLenum* out_type, size_t* out_size);
 static void cast_buffer_usages(VIBufferType in_type, VIBufferUsageFlags in_usages, VkBufferUsageFlags* out_usages);
 static void cast_buffer_type(VIBufferType in_type, GLenum* out_type);
@@ -789,6 +800,20 @@ static void (*gl_cmd_execute_table[GL_COMMAND_TYPE_ENUM_COUNT])(VIDevice, GLComm
 	gl_cmd_execute_copy_image,
 	gl_cmd_execute_copy_image_to_buffer,
 	gl_cmd_execute_dispatch,
+};
+
+struct VIModuleTypeEntry
+{
+	VIModuleType vi_type;
+	VkShaderStageFlagBits vk_type;
+	EShLanguage glslang_type;
+	GLenum gl_type;
+};
+
+static const VIModuleTypeEntry vi_module_type_table[3] = {
+	{ VI_MODULE_TYPE_VERTEX,   VK_SHADER_STAGE_VERTEX_BIT,   EShLangVertex,   GL_VERTEX_SHADER },
+	{ VI_MODULE_TYPE_FRAGMENT, VK_SHADER_STAGE_FRAGMENT_BIT, EShLangFragment, GL_FRAGMENT_SHADER },
+	{ VI_MODULE_TYPE_COMPUTE,  VK_SHADER_STAGE_COMPUTE_BIT,  EShLangCompute,  GL_COMPUTE_SHADER },
 };
 
 struct VIGLSLTypeEntry
@@ -1582,17 +1607,32 @@ static void gl_create_module(VIDevice device, VIModule module, const VIModuleInf
 {
 	VI_ASSERT(info->pipeline_layout);
 
-	std::string patched;
 	EShLanguage stage;
 	GLenum glstage;
 
-	cast_module_type_bit(info->type, &stage);
-	cast_module_type_bit(info->type, &glstage);
-	bool result = compile_gl(module, info->pipeline_layout, info->vise_glsl, patched, stage, VI_SHADER_ENTRY_POINT);
-	GLint glsl_size = patched.size() + 1;
-	module->gl.patched_glsl = (char*)vi_malloc(glsl_size);
-	memcpy(module->gl.patched_glsl, patched.data(), glsl_size - 1);
-	module->gl.patched_glsl[glsl_size - 1] = '\0';
+	cast_module_type_glslang(info->type, &stage);
+	cast_module_type_gl(info->type, &glstage);
+
+	VICompileResult result;
+	compile_gl(result, stage, info->vise_glsl, info->pipeline_layout);
+	VI_ASSERT(result.success && "gl_create_module failed");
+
+	GLint glsl_size = result.gl_patched.size() + 1;
+
+	// copy temporary results over to VIModule
+	{
+		module->gl.push_constant_count = (uint32_t)result.gl_push_constants.size();
+		module->gl.push_constants = (GLPushConstant*)vi_malloc(sizeof(GLPushConstant) * module->gl.push_constant_count);
+		for (uint32_t i = 0; i < module->gl.push_constant_count; i++)
+		{
+			new (module->gl.push_constants + i)GLPushConstant();
+			module->gl.push_constants[i] = result.gl_push_constants[i];
+		}
+
+		module->gl.patched_glsl = (char*)vi_malloc(glsl_size);
+		memcpy(module->gl.patched_glsl, result.gl_patched.data(), glsl_size - 1);
+		module->gl.patched_glsl[glsl_size - 1] = '\0';
+	}
 
 	GLuint shader = module->gl.shader = glCreateShader(glstage);
 	glShaderSource(shader, 1, &module->gl.patched_glsl, &glsl_size);
@@ -1616,7 +1656,11 @@ static void gl_destroy_module(VIDevice device, VIModule module)
 	module->gl.patched_glsl = nullptr;
 
 	if (module->gl.push_constant_count > 0)
-		delete[] module->gl.push_constants;
+	{
+		for (uint32_t i = 0; i < module->gl.push_constant_count; i++)
+			module->gl.push_constants[i].~GLPushConstant();
+		vi_free(module->gl.push_constants);
+	}
 
 	glDeleteShader(module->gl.shader);
 }
@@ -2598,7 +2642,7 @@ static void gl_cmd_execute_dispatch(VIDevice device, GLCommand* glcmd)
 	glMemoryBarrier(GL_ALL_BARRIER_BITS);
 }
 
-static bool compile_vk(const char* src, std::vector<char>& byte_code, EShLanguage stage, const char* entry_point)
+static void compile_vk(VICompileResult& result, EShLanguage stage, const char* vise_glsl)
 {
 	if (!has_glslang_initialized)
 	{
@@ -2606,8 +2650,10 @@ static bool compile_vk(const char* src, std::vector<char>& byte_code, EShLanguag
 		has_glslang_initialized = true;
 	}
 
+	result = VICompileResult{};
+
 	glslang::TShader shader_tmp(stage);
-	shader_tmp.setStrings(&src, 1);
+	shader_tmp.setStrings(&vise_glsl, 1);
 
 	EShMessages messages = EShMsgDefault;
 	glslang::EshTargetClientVersion client_version = VI_VK_GLSLANG_VERSION;
@@ -2617,8 +2663,8 @@ static bool compile_vk(const char* src, std::vector<char>& byte_code, EShLanguag
 	shader_tmp.setEnvInput(glslang::EShSourceGlsl, stage, glslang::EShClientVulkan, VI_SHADER_GLSL_VERSION);
 	shader_tmp.setEnvClient(glslang::EShClientVulkan, client_version);
 	shader_tmp.setEnvTarget(glslang::EShTargetSpv, lang_version);
-	shader_tmp.setEntryPoint(entry_point);
-	shader_tmp.setSourceEntryPoint(entry_point);
+	shader_tmp.setEntryPoint(VI_SHADER_ENTRY_POINT);
+	shader_tmp.setSourceEntryPoint(VI_SHADER_ENTRY_POINT);
 
 	std::string preprocessed_glsl;
 	glslang::TShader::ForbidIncluder includer;
@@ -2628,11 +2674,11 @@ static bool compile_vk(const char* src, std::vector<char>& byte_code, EShLanguag
 	if (!shader_tmp.preprocess(resources, VI_SHADER_GLSL_VERSION, ENoProfile, false, false, messages, &preprocessed_glsl, includer))
 	{
 		std::cout << "Preprocessing failed for shader: " << std::endl;
-		std::cout << src << std::endl;
+		std::cout << vise_glsl << std::endl;
 		std::cout << shader_tmp.getInfoLog() << std::endl;
 		std::cout << shader_tmp.getInfoDebugLog() << std::endl;
 		VI_ASSERT(0 && "preprocessing failed");
-		return false;
+		return;
 	}
 
 	glslang::TShader shader(stage);
@@ -2641,8 +2687,8 @@ static bool compile_vk(const char* src, std::vector<char>& byte_code, EShLanguag
 	shader.setEnvInput(glslang::EShSourceGlsl, stage, glslang::EShClientVulkan, VI_SHADER_GLSL_VERSION);
 	shader.setEnvClient(glslang::EShClientVulkan, client_version);
 	shader.setEnvTarget(glslang::EShTargetSpv, lang_version);
-	shader.setEntryPoint(entry_point);
-	shader.setSourceEntryPoint(entry_point);
+	shader.setEntryPoint(VI_SHADER_ENTRY_POINT);
+	shader.setSourceEntryPoint(VI_SHADER_ENTRY_POINT);
 
 	if (!shader.parse(resources, VI_SHADER_GLSL_VERSION, false, messages, includer))
 	{
@@ -2650,7 +2696,7 @@ static bool compile_vk(const char* src, std::vector<char>& byte_code, EShLanguag
 		std::cout << shader.getInfoLog() << std::endl;
 		std::cout << shader.getInfoDebugLog() << std::endl;
 		VI_ASSERT(0 && "parsing failed");
-		return false;
+		return;
 	}
 
 	glslang::TProgram program;
@@ -2661,6 +2707,7 @@ static bool compile_vk(const char* src, std::vector<char>& byte_code, EShLanguag
 		std::cout << program.getInfoLog() << std::endl;
 		std::cout << program.getInfoDebugLog() << std::endl;
 		VI_ASSERT(0 && "link failed");
+		return;
 	}
 
 	std::vector<uint32_t> spirv_data;
@@ -2673,14 +2720,21 @@ static bool compile_vk(const char* src, std::vector<char>& byte_code, EShLanguag
 	options.stripDebugInfo = false;
 	glslang::GlslangToSpv(*program.getIntermediate(stage), spirv_data, &spv_logger, &options);
 
-	byte_code.resize(spirv_data.size() * 4);
-	memcpy(byte_code.data(), spirv_data.data(), byte_code.size());
+	result.vk_spirv.resize(spirv_data.size() * 4);
+	memcpy(result.vk_spirv.data(), spirv_data.data(), result.vk_spirv.size());
+
+	result.success = true;
 }
 
-static bool compile_gl(VIModule module, VIPipelineLayout layout, const char* src, std::string& patched, EShLanguage stage, const char* entry_point)
+static void compile_gl(VICompileResult& result, EShLanguage stage, const char* vise_glsl, VIPipelineLayout layout)
 {
-	std::vector<char> byte_code;
-	compile_vk(src, byte_code, stage, entry_point);
+	result = VICompileResult{};
+
+	VICompileResult reflect_result;
+	compile_vk(reflect_result, stage, vise_glsl);
+	VI_ASSERT(reflect_result.success && "compile_gl failed: unable to compile spirv");
+
+	std::vector<char>& byte_code = reflect_result.vk_spirv;
 
 	try
 	{
@@ -2711,9 +2765,6 @@ static bool compile_gl(VIModule module, VIPipelineLayout layout, const char* src
 			return success;
 		};
 
-		module->gl.push_constant_count = 0;
-		module->gl.push_constants = nullptr;
-
 		// build push constant lookup table for OpenGL, lookup table is stored in VIModule.
 		if (!resources.push_constant_buffers.empty())
 		{
@@ -2726,10 +2777,9 @@ static bool compile_gl(VIModule module, VIPipelineLayout layout, const char* src
 			VI_ASSERT(!instance_name.empty() && "push_constant block must define an instance name");
 
 			// each member in push_constant block is an OpenGL uniform
-			uint32_t push_constant_count = (uint32_t)block_type.member_types.size();
+			size_t push_constant_count = block_type.member_types.size();
 
-			module->gl.push_constant_count = push_constant_count;
-			module->gl.push_constants = new GLPushConstant[push_constant_count];
+			result.gl_push_constants.resize(push_constant_count);
 
 			for (size_t i = 0; i < push_constant_count; i++)
 			{
@@ -2741,18 +2791,18 @@ static bool compile_gl(VIModule module, VIPipelineLayout layout, const char* src
 				VIGLSLType vi_glsl_type;
 				cast_glsl_type_spirv(member_type, &vi_glsl_type);
 
-				module->gl.push_constants[i].offset = member_offset;
-				module->gl.push_constants[i].size = member_size;
-				module->gl.push_constants[i].uniform_glsl_type = vi_glsl_type;
-				module->gl.push_constants[i].uniform_name = instance_name;
-				module->gl.push_constants[i].uniform_name.push_back('.');
-				module->gl.push_constants[i].uniform_name += member_name;
-				module->gl.push_constants[i].uniform_arr_size = 1;
+				result.gl_push_constants[i].offset = member_offset;
+				result.gl_push_constants[i].size = member_size;
+				result.gl_push_constants[i].uniform_glsl_type = vi_glsl_type;
+				result.gl_push_constants[i].uniform_name = instance_name;
+				result.gl_push_constants[i].uniform_name.push_back('.');
+				result.gl_push_constants[i].uniform_name += member_name;
+				result.gl_push_constants[i].uniform_arr_size = 1;
 				
 				if (!member_type.array.empty())
 				{
 					VI_ASSERT(member_type.array.size() == 1 && "does not support array of arrays");
-					module->gl.push_constants[i].uniform_arr_size = member_type.array[0];
+					result.gl_push_constants[i].uniform_arr_size = member_type.array[0];
 				}
 			}
 		}
@@ -2790,17 +2840,18 @@ static bool compile_gl(VIModule module, VIPipelineLayout layout, const char* src
 		{
 			//compiler.add_header_line("layout(origin_upper_left) in vec4 gl_FragCoord;");
 		}
-		patched = compiler.compile();
+
+		result.gl_patched = compiler.compile();
 	}
 	catch (spirv_cross::CompilerError error)
 	{
 		std::cout << "spirv_cross::CompilerError " << error.what() << std::endl;
-		return false;
+		return;
 	};
 
 	//std::cout << "= BEGIN PATCHED GLSL" << std::endl << patched << "= END PATCHED GLSL" << std::endl;
 	
-	return true;
+	result.success = true;
 }
 
 static void flip_image_data(uint8_t* data, uint32_t image_width, uint32_t image_height, uint32_t texel_size)
@@ -2858,54 +2909,19 @@ static void cast_compare_op_gl(VICompareOp in_op, GLenum* out_op)
 	*out_op = vi_compare_op_table[(int)in_op].gl_compare_op;
 }
 
-static void cast_module_type(VIModuleType in_flags, VkShaderStageFlags* out_stages)
+static void cast_module_type_vk(VIModuleType in_type, VkShaderStageFlagBits* out_bit)
 {
-	*out_stages = 0;
-
-	if (in_flags & VI_MODULE_TYPE_VERTEX)
-		*out_stages |= VK_SHADER_STAGE_VERTEX_BIT;
-
-	if (in_flags & VI_MODULE_TYPE_FRAGMENT)
-		*out_stages |= VK_SHADER_STAGE_FRAGMENT_BIT;
-
-	if (in_flags & VI_MODULE_TYPE_COMPUTE)
-		*out_stages |= VK_SHADER_STAGE_COMPUTE_BIT;
+	*out_bit = vi_module_type_table[(int)in_type].vk_type;
 }
 
-static void cast_module_type_bit(VIModuleType in_type, EShLanguage* out_type)
+static void cast_module_type_glslang(VIModuleType in_type, EShLanguage* out_type)
 {
-	switch (in_type)
-	{
-	case VI_MODULE_TYPE_VERTEX:
-		*out_type = EShLangVertex;
-		break;
-	case VI_MODULE_TYPE_FRAGMENT:
-		*out_type = EShLangFragment;
-		break;
-	case VI_MODULE_TYPE_COMPUTE:
-		*out_type = EShLangCompute;
-		break;
-	default:
-		VI_UNREACHABLE;
-	}
+	*out_type = vi_module_type_table[(int)in_type].glslang_type;
 }
 
-static void cast_module_type_bit(VIModuleType in_type, GLenum* out_type)
+static void cast_module_type_gl(VIModuleType in_type, GLenum* out_type)
 {
-	switch (in_type)
-	{
-	case VI_MODULE_TYPE_VERTEX:
-		*out_type = GL_VERTEX_SHADER;
-		break;
-	case VI_MODULE_TYPE_FRAGMENT:
-		*out_type = GL_FRAGMENT_SHADER;
-		break;
-	case VI_MODULE_TYPE_COMPUTE:
-		*out_type = GL_COMPUTE_SHADER;
-		break;
-	default:
-		VI_UNREACHABLE;
-	}
+	*out_type = vi_module_type_table[(int)in_type].gl_type;
 }
 
 static void cast_index_type(VkIndexType in_type, GLenum* out_type, size_t* out_size)
@@ -3916,13 +3932,15 @@ VIModule vi_create_module(VIDevice device, const VIModuleInfo* info)
 
 	std::vector<char> byte_code;
 	EShLanguage stage;
-	cast_module_type_bit(info->type, &stage);
-	bool result = compile_vk(info->vise_glsl, byte_code, stage, VI_SHADER_ENTRY_POINT);
+	cast_module_type_glslang(info->type, &stage);
 
+	VICompileResult result;
+	compile_vk(result, stage, info->vise_glsl);
+	
 	VkShaderModuleCreateInfo moduleCI{};
 	moduleCI.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	moduleCI.pCode = (const uint32_t*)byte_code.data();
-	moduleCI.codeSize = byte_code.size();
+	moduleCI.pCode = (const uint32_t*)result.vk_spirv.data();
+	moduleCI.codeSize = result.vk_spirv.size();
 
 	VIVulkan* vk = &device->vk;
 	VK_CHECK(vkCreateShaderModule(vk->device, &moduleCI, NULL, &module->vk.handle));
