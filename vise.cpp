@@ -752,9 +752,9 @@ static void cast_format_gl(VIFormat in_format, GLenum* out_internal_format, GLen
 static void cast_set_pool_resources(uint32_t in_res_count, const VISetPoolResource* in_res, std::vector<VkDescriptorPoolSize>& out_sizes);
 static void cast_set_binding(const VISetBinding* in_binding, VkDescriptorSetLayoutBinding* out_binding);
 static void cast_set_binding_type(VISetBindingType in_type, VkDescriptorType* out_type);
-static void cast_glsl_type(VIGLSLType in_type, VkFormat* out_format);
-static void cast_glsl_type(VIGLSLType in_type, GLint* out_component_count, GLenum* out_component_type);
-static void cast_glsl_type(const spirv_cross::SPIRType& in_type, VIGLSLType* out_type);
+static void cast_glsl_type_vk(VIGLSLType in_type, VkFormat* out_format);
+static void cast_glsl_type_gl(VIGLSLType in_type, GLint* out_component_count, GLenum* out_component_type);
+static void cast_glsl_type_spirv(const spirv_cross::SPIRType& in_type, VIGLSLType* out_type);
 static void cast_pipeline_vertex_input(uint32_t attr_count, VIVertexAttribute* attrs, uint32_t binding_count, VIVertexBinding* bindings,
 	std::vector<VkVertexInputAttributeDescription>& out_attrs, std::vector<VkVertexInputBindingDescription>& out_bindings);
 static void cast_memory_barrier(const VIMemoryBarrier& in_barrier, VkMemoryBarrier* out_barrier);
@@ -794,18 +794,33 @@ static void (*gl_cmd_execute_table[GL_COMMAND_TYPE_ENUM_COUNT])(VIDevice, GLComm
 struct VIGLSLTypeEntry
 {
 	VIGLSLType glsl_type;
-	VkFormat vk_type;
+	VkFormat vk_vertex_format;
 	uint32_t gl_component_count;
 	GLenum gl_component_type;
 };
 
-static const VIGLSLTypeEntry vi_glsl_type_table[6] = {
-	{ VI_GLSL_TYPE_FLOAT, VK_FORMAT_R32_SFLOAT,         1, GL_FLOAT },
-	{ VI_GLSL_TYPE_VEC2, VK_FORMAT_R32G32_SFLOAT,       2, GL_FLOAT },
-	{ VI_GLSL_TYPE_VEC3, VK_FORMAT_R32G32B32_SFLOAT,    3, GL_FLOAT },
-	{ VI_GLSL_TYPE_VEC4, VK_FORMAT_R32G32B32A32_SFLOAT, 4, GL_FLOAT },
-	{ VI_GLSL_TYPE_UINT, VK_FORMAT_R32_UINT,            1, GL_UNSIGNED_INT },
-	{ VI_GLSL_TYPE_MAT4, VK_FORMAT_UNDEFINED,           16, GL_FLOAT },
+static const VIGLSLTypeEntry vi_glsl_type_table[21] = {
+	{ VI_GLSL_TYPE_FLOAT,  VK_FORMAT_R32_SFLOAT,          1,  GL_FLOAT },
+	{ VI_GLSL_TYPE_VEC2,   VK_FORMAT_R32G32_SFLOAT,       2,  GL_FLOAT },
+	{ VI_GLSL_TYPE_VEC3,   VK_FORMAT_R32G32B32_SFLOAT,    3,  GL_FLOAT },
+	{ VI_GLSL_TYPE_VEC4,   VK_FORMAT_R32G32B32A32_SFLOAT, 4,  GL_FLOAT },
+	{ VI_GLSL_TYPE_DOUBLE, VK_FORMAT_R64_SFLOAT,          1,  GL_DOUBLE },
+	{ VI_GLSL_TYPE_DVEC2,  VK_FORMAT_R64G64_SFLOAT,       2,  GL_DOUBLE },
+	{ VI_GLSL_TYPE_DVEC3,  VK_FORMAT_R64G64B64_SFLOAT,    3,  GL_DOUBLE },
+	{ VI_GLSL_TYPE_DVEC4,  VK_FORMAT_R64G64B64A64_SFLOAT, 4,  GL_DOUBLE },
+	{ VI_GLSL_TYPE_UINT,   VK_FORMAT_R32_UINT,            1,  GL_UNSIGNED_INT },
+	{ VI_GLSL_TYPE_UVEC2,  VK_FORMAT_R32G32_UINT,         2,  GL_UNSIGNED_INT },
+	{ VI_GLSL_TYPE_UVEC3,  VK_FORMAT_R32G32B32_UINT,      3,  GL_UNSIGNED_INT },
+	{ VI_GLSL_TYPE_UVEC4,  VK_FORMAT_R32G32B32A32_UINT,   4,  GL_UNSIGNED_INT },
+	{ VI_GLSL_TYPE_INT,    VK_FORMAT_R32_SINT,            1,  GL_INT },
+	{ VI_GLSL_TYPE_IVEC2,  VK_FORMAT_R32G32_SINT,         2,  GL_INT },
+	{ VI_GLSL_TYPE_IVEC3,  VK_FORMAT_R32G32B32_SINT,      3,  GL_INT },
+	{ VI_GLSL_TYPE_IVEC4,  VK_FORMAT_R32G32B32A32_SINT,   4,  GL_INT },
+	{ VI_GLSL_TYPE_BOOL,   VK_FORMAT_UNDEFINED,           1,  GL_BOOL },
+	{ VI_GLSL_TYPE_BVEC2,  VK_FORMAT_UNDEFINED,           2,  GL_BOOL },
+	{ VI_GLSL_TYPE_BVEC3,  VK_FORMAT_UNDEFINED,           3,  GL_BOOL },
+	{ VI_GLSL_TYPE_BVEC4,  VK_FORMAT_UNDEFINED,           4,  GL_BOOL },
+	{ VI_GLSL_TYPE_MAT4,   VK_FORMAT_UNDEFINED,           16, GL_FLOAT },
 };
 
 struct VIFilterEntry
@@ -1708,7 +1723,7 @@ static void gl_create_pipeline(VIDevice device, VIPipeline pipeline, VIModule vm
 		GLuint attr_offset = (GLuint)attr->offset;
 		GLuint attr_binding = (GLuint)attr->binding;
 		GLboolean normalized = GL_FALSE; // TODO:
-		cast_glsl_type(attr->type, &attr_component_count, &attr_component_type);
+		cast_glsl_type_gl(attr->type, &attr_component_count, &attr_component_type);
 
 		glEnableVertexAttribArray(location);
 		glVertexAttribFormat(location, attr_component_count, attr_component_type, normalized, attr_offset);
@@ -2724,7 +2739,7 @@ static bool compile_gl(VIModule module, VIPipelineLayout layout, const char* src
 				uint32_t member_size = (uint32_t)compiler.get_declared_struct_member_size(block_type, i);
 
 				VIGLSLType vi_glsl_type;
-				cast_glsl_type(member_type, &vi_glsl_type);
+				cast_glsl_type_spirv(member_type, &vi_glsl_type);
 
 				module->gl.push_constants[i].offset = member_offset;
 				module->gl.push_constants[i].size = member_size;
@@ -3132,19 +3147,19 @@ static void cast_set_binding_type(VISetBindingType in_type, VkDescriptorType* ou
 	}
 }
 
-static void cast_glsl_type(VIGLSLType in_type, VkFormat* out_format)
+static void cast_glsl_type_vk(VIGLSLType in_type, VkFormat* out_format)
 {
-	*out_format = vi_glsl_type_table[(int)in_type].vk_type;
+	*out_format = vi_glsl_type_table[(int)in_type].vk_vertex_format;
 }
 
-static void cast_glsl_type(VIGLSLType in_type, GLint* out_component_count, GLenum* out_component_type)
+static void cast_glsl_type_gl(VIGLSLType in_type, GLint* out_component_count, GLenum* out_component_type)
 {
 	const VIGLSLTypeEntry* entry = vi_glsl_type_table + (int)in_type;
 	*out_component_count = entry->gl_component_count;
 	*out_component_type = entry->gl_component_type;
 }
 
-static void cast_glsl_type(const spirv_cross::SPIRType& in_type, VIGLSLType* out_type)
+static void cast_glsl_type_spirv(const spirv_cross::SPIRType& in_type, VIGLSLType* out_type)
 {
 	if (in_type.basetype == spirv_cross::SPIRType::Float)
 	{
@@ -3188,13 +3203,16 @@ static void cast_pipeline_vertex_input(uint32_t attr_count, VIVertexAttribute* a
 
 	for (uint32_t i = 0; i < attr_count; i++)
 	{
-		VkFormat format;
-		cast_glsl_type(attrs[i].type, &format);
-		VI_ASSERT(format != VK_FORMAT_UNDEFINED && "not supported");
+		// TODO: check if the vertex_format has feature VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT,
+		//       do the query here, or maybe during vulkan device creation?
+
+		VkFormat vertex_format;
+		cast_glsl_type_vk(attrs[i].type, &vertex_format);
+		VI_ASSERT(vertex_format != VK_FORMAT_UNDEFINED && "not supported");
 
 		out_attrs[i].binding = attrs[i].binding;
 		out_attrs[i].location = i;
-		out_attrs[i].format = format;
+		out_attrs[i].format = vertex_format;
 		out_attrs[i].offset = attrs[i].offset;
 	}
 
