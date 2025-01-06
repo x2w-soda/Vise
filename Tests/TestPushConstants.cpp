@@ -1,15 +1,16 @@
 #include <filesystem>
 #include "TestPushConstants.h"
 
-
-const char test_vertex_src1[] =  R"(
 // Vise NDC positions, CCW
+#define GLSL_NDC_POSITION R"(
 const float vertices[6] = {
      0.0,  0.5, // top center
     -0.5, -0.5, // bottom left
      0.5, -0.5, // bottom right
 };
+)"
 
+const char test_vertex_src1[] = GLSL_NDC_POSITION R"(
 layout (location = 0) out vec4 vColor;
 
 layout (push_constant) uniform uPC
@@ -24,22 +25,13 @@ void main()
 	vec2 pos;
 	pos.x = vertices[gl_VertexIndex * 2];
 	pos.y = vertices[gl_VertexIndex * 2 + 1];
+	gl_Position = vec4(pos + PC.ndc_offset.xy, 0.0, 1.0);
 
-	pos = pos + PC.ndc_offset.xy;
-
-	gl_Position = vec4(pos, 0.0, 1.0);
 	vColor = PC.color;
 }
 )";
 
-const char test_vertex_src2[] = R"(
-// Vise NDC positions, CCW
-const float vertices[6] = {
-     0.0,  0.5, // top center
-    -0.5, -0.5, // bottom left
-     0.5, -0.5, // bottom right
-};
-
+const char test_vertex_src2[] = GLSL_NDC_POSITION R"(
 layout (location = 0) out vec4 vColor;
 
 // NOTE: Any member of a push constant block that is declared as an array
@@ -56,13 +48,10 @@ void main()
 	vec2 pos;
 	pos.x = vertices[gl_VertexIndex * 2];
 	pos.y = vertices[gl_VertexIndex * 2 + 1];
-
-	pos = pos + PC.ndc_offset.xy;
-
-	gl_Position = vec4(pos, 0.0, 1.0);
+	gl_Position = vec4(pos + PC.ndc_offset.xy, 0.0, 1.0);
 
 	// Dirty hack to convert non dynamically-uniform indices into constant-integral indices.
-	// Using vColor[gl_VertexIndex] is not valid.
+	// Using PC.colors[gl_VertexIndex] is not valid.
 	switch (gl_VertexIndex)
 	{
 	case 0: vColor = PC.colors[0]; break;

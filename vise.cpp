@@ -1651,6 +1651,7 @@ static void gl_create_module(VIDevice device, VIModule module, const VIModuleInf
 		glGetShaderInfoLog(shader, infoLog.size(), NULL, infoLog.data());
 		std::cout << "vise glCompileShader failed\n" << infoLog << std::endl;
 	}
+	VI_ASSERT(success);
 }
 
 static void gl_destroy_module(VIDevice device, VIModule module)
@@ -1763,6 +1764,7 @@ static void gl_create_pipeline(VIDevice device, VIPipeline pipeline, VIModule vm
 		glGetProgramInfoLog(pipeline->gl.program, infoLog.size(), NULL, infoLog.data());
 		std::cout << "vise glLinkProgram failed\n" << infoLog << std::endl;
 	}
+	VI_ASSERT(success);
 
 	// TODO: make vi_cmd_bind_index_buffer, vi_cmd_bind_vertex_buffers, and vi_cmd_bind_pipeline order independent
 	glCreateVertexArrays(1, &pipeline->gl.vao);
@@ -2355,16 +2357,45 @@ static void gl_cmd_execute_push_constants(VIDevice device, GLCommand* glcmd)
 		{
 			const uint8_t* value_base = glcmd->push_constants.value + (pc->offset - range_offset);
 
+			// TODO: maybe flatten with table of function pointers?
+			//       void (*uniform_fn)(GLint, GLsizei, const void*)
 			switch (pc->uniform_glsl_type)
 			{
 			case VI_GLSL_TYPE_FLOAT:
 				glUniform1fv(pc_loc, pc->uniform_arr_size, (const GLfloat*)value_base);
+				break;
+			case VI_GLSL_TYPE_VEC2:
+				glUniform2fv(pc_loc, pc->uniform_arr_size, (const GLfloat*)value_base);
+				break;
+			case VI_GLSL_TYPE_VEC3:
+				glUniform3fv(pc_loc, pc->uniform_arr_size, (const GLfloat*)value_base);
 				break;
 			case VI_GLSL_TYPE_VEC4:
 				glUniform4fv(pc_loc, pc->uniform_arr_size, (const GLfloat*)value_base);
 				break;
 			case VI_GLSL_TYPE_UINT:
 				glUniform1uiv(pc_loc, pc->uniform_arr_size, (const GLuint*)value_base);
+				break;
+			case VI_GLSL_TYPE_UVEC2:
+				glUniform2uiv(pc_loc, pc->uniform_arr_size, (const GLuint*)value_base);
+				break;
+			case VI_GLSL_TYPE_UVEC3:
+				glUniform3uiv(pc_loc, pc->uniform_arr_size, (const GLuint*)value_base);
+				break;
+			case VI_GLSL_TYPE_UVEC4:
+				glUniform4uiv(pc_loc, pc->uniform_arr_size, (const GLuint*)value_base);
+				break;
+			case VI_GLSL_TYPE_INT:
+				glUniform1iv(pc_loc, pc->uniform_arr_size, (const GLint*)value_base);
+				break;
+			case VI_GLSL_TYPE_IVEC2:
+				glUniform2iv(pc_loc, pc->uniform_arr_size, (const GLint*)value_base);
+				break;
+			case VI_GLSL_TYPE_IVEC3:
+				glUniform3iv(pc_loc, pc->uniform_arr_size, (const GLint*)value_base);
+				break;
+			case VI_GLSL_TYPE_IVEC4:
+				glUniform4iv(pc_loc, pc->uniform_arr_size, (const GLint*)value_base);
 				break;
 			case VI_GLSL_TYPE_MAT4:
 				glUniformMatrix4fv(pc_loc, 1, false, (const GLfloat*)value_base);
@@ -3217,10 +3248,41 @@ static void cast_glsl_type_spirv(const spirv_cross::SPIRType& in_type, VIGLSLTyp
 			return;
 		}
 	}
+	else if (in_type.basetype == spirv_cross::SPIRType::Double)
+	{
+		switch (in_type.vecsize)
+		{
+		case 1:
+			*out_type = VI_GLSL_TYPE_DOUBLE;
+			return;
+		case 2:
+			*out_type = VI_GLSL_TYPE_DVEC2;
+			return;
+		case 3:
+			*out_type = VI_GLSL_TYPE_DVEC3;
+			return;
+		case 4:
+			*out_type = VI_GLSL_TYPE_DVEC4;
+			return;
+		}
+	}
 	else if (in_type.basetype == spirv_cross::SPIRType::UInt)
 	{
-		*out_type = VI_GLSL_TYPE_UINT;
-		return;
+		switch (in_type.vecsize)
+		{
+		case 1:
+			*out_type = VI_GLSL_TYPE_UINT;
+			return;
+		case 2:
+			*out_type = VI_GLSL_TYPE_UVEC2;
+			return;
+		case 3:
+			*out_type = VI_GLSL_TYPE_UVEC3;
+			return;
+		case 4:
+			*out_type = VI_GLSL_TYPE_UVEC4;
+			return;
+		}
 	}
 
 	VI_UNREACHABLE;
