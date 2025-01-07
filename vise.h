@@ -239,8 +239,9 @@ struct VISwapchainInfo
 struct VIModuleInfo
 {
 	VIModuleType type;
-	VIPipelineLayout pipeline_layout = nullptr;
+	VIPipelineLayout pipeline_layout = VI_NULL;
 	const char* vise_glsl = nullptr;
+	const char* vise_binary = nullptr;
 };
 
 struct VISamplerInfo
@@ -324,6 +325,13 @@ struct VIPipelineLayoutInfo
 	uint32_t push_constant_size;
 	uint32_t set_layout_count;
 	const VISetLayout* set_layouts;
+};
+
+struct VIPipelineLayoutData
+{
+	uint32_t push_constant_size;
+	uint32_t set_layout_count;
+	const VISetLayoutInfo* set_layouts;
 };
 
 enum VIBlendFactor
@@ -580,6 +588,9 @@ VI_API void vi_cmd_draw_indexed(VICommand cmd, const VIDrawIndexedInfo* info);
 VI_API void vi_cmd_pipeline_barrier_memory(VICommand cmd, VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages, VkDependencyFlags deps, uint32_t barrier_count, const VIMemoryBarrier* barriers);
 VI_API void vi_cmd_pipeline_barrier_image_memory(VICommand cmd, VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages, VkDependencyFlags deps, uint32_t barrier_count, const VIImageMemoryBarrier* barriers);
 VI_API void vi_cmd_pipeline_barrier_buffer_memory(VICommand cmd, VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages, VkDependencyFlags deps, uint32_t barrier_count, const VIBufferMemoryBarrier* barriers);
+
+VI_API char* vi_offline_compile_binary(VIBackend backend, VIModuleType type, const VIPipelineLayoutData* pipeline_layout, const char* vise_glsl, uint32_t* binary_size);
+VI_API void vi_offline_free(void* data);
 
 VI_API VkInstance vi_device_unwrap_instance(VIDevice device);
 VI_API VkDevice vi_device_unwrap(VIDevice device);

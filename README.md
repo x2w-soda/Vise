@@ -23,9 +23,9 @@ Abstractions across both backends:
 	- Uniform Buffer `DONE`
 	- Storage Buffer `DONE`
 	- Stroage Image `DONE`
-- Pipeline Push Constants. `TODO`
+- Pipeline Push Constants. `DONE`
 - Indirect Draw `TODO`
-- Offline Compilation of Vise GLSL shaders. `TODO`
+- Offline Compilation of Vise GLSL shaders. `DONE`
 - Multithreaded Command Buffer Recording. `TODO`
 
 To build examples manually:

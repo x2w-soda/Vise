@@ -114,6 +114,7 @@ struct VIOpenGL;
 struct GLPushConstant;
 struct HostMalloc;
 struct VICompileResult;
+struct VIBinaryHeader;
 
 static void* vi_malloc(size_t size);
 static void vi_free(void* ptr);
@@ -163,7 +164,6 @@ struct VIModuleObj : VIObject
 			uint32_t push_constant_count;
 			GLPushConstant* push_constants;
 			GLuint shader;
-			char* patched_glsl;
 		} gl;
 	};
 };
@@ -305,6 +305,11 @@ struct GLPushConstant
 	uint32_t uniform_arr_size;
 	VIGLSLType uniform_glsl_type;
 	std::string uniform_name;
+
+	size_t GetSerialSize() const
+	{
+		return sizeof(uint32_t) * 5 + uniform_name.size();
+	}
 };
 
 struct VIPipelineLayoutObj : VIObject
@@ -489,8 +494,19 @@ struct VICompileResult
 	std::string error;
 	std::string gl_patched;
 	std::vector<GLPushConstant> gl_push_constants;
-	std::vector<char> vk_spirv;
+	std::vector<uint32_t> vk_spirv;
 };
+
+struct VIBinaryHeader
+{
+	uint32_t payload_size;  // byte size of payload, the payload is serialized as a byte stream
+	uint32_t header_size;   // byte offset from header to payload
+	uint32_t backend_type;  // VI_BACKEND_VULKAN or VI_BACKEND_OPENGL
+	uint32_t module_type;   // VI_MODULE_TYPE_VERTEX, VI_MODULE_TYPE_FRAGMENT, or VI_MODULE_TYPE_COMPUTE
+	uint32_t glpc_count;    // number of GLPushConstant entries before payload
+};
+
+static_assert(sizeof(VIBinaryHeader) == 20);
 
 enum GLCommandType
 {
@@ -969,6 +985,81 @@ static const VIFormatEntry vi_format_table[10] = {
 	{ VI_FORMAT_D32F_S8U, VI_IMAGE_ASPECT_DEPTH_STENCIL, VK_FORMAT_D32_SFLOAT_S8_UINT,  5,  GL_DEPTH32F_STENCIL8, GL_DEPTH_STENCIL, GL_FLOAT_32_UNSIGNED_INT_24_8_REV },
 	{ VI_FORMAT_D24_S8U,  VI_IMAGE_ASPECT_DEPTH_STENCIL, VK_FORMAT_D24_UNORM_S8_UINT,   4,  GL_DEPTH24_STENCIL8,  GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, }
 };
+
+static inline void swrite32(uint8_t** mem, uint32_t value)
+{
+	uint8_t* now = *mem;
+	*now++ = value & 0xFF;
+	*now++ = (value >> 8) & 0xFF;
+	*now++ = (value >> 16) & 0xFF;
+	*now++ = (value >> 24) & 0xFF;
+	*mem = now;
+}
+
+static inline void swrite_bytes(uint8_t** mem, size_t byte_size, const void* bytes)
+{
+	memcpy(*mem, bytes, byte_size);
+	*mem += byte_size;
+}
+
+static inline void swrite_header(uint8_t** mem, const VIBinaryHeader& header)
+{
+	swrite32(mem, (uint32_t)header.payload_size);
+	swrite32(mem, (uint32_t)header.header_size);
+	swrite32(mem, (uint32_t)header.backend_type);
+	swrite32(mem, (uint32_t)header.module_type);
+	swrite32(mem, (uint32_t)header.glpc_count);
+}
+
+static inline void swrite_glpc(uint8_t** mem, const GLPushConstant& pc)
+{
+	swrite32(mem, pc.size);
+	swrite32(mem, pc.offset);
+	swrite32(mem, pc.uniform_arr_size);
+	swrite32(mem, pc.uniform_glsl_type);
+	swrite32(mem, pc.uniform_name.size());
+	swrite_bytes(mem, pc.uniform_name.size(), pc.uniform_name.data());
+}
+
+static inline uint32_t sread32(uint8_t** mem)
+{
+	uint8_t* now = *mem;
+	uint32_t word = 0;
+
+	word |= static_cast<uint32_t>(now[0]);
+	word |= static_cast<uint32_t>(now[1]) << 8;
+	word |= static_cast<uint32_t>(now[2]) << 16;
+	word |= static_cast<uint32_t>(now[3]) << 24;
+
+	*mem = now + 4;
+	return word;
+}
+
+static inline void sread_bytes(uint8_t** mem, size_t size, void* dst)
+{
+	memcpy(dst, *mem, size);
+	*mem += size;
+}
+
+static void sread_header(uint8_t** mem, VIBinaryHeader* header)
+{
+	header->payload_size = sread32(mem);
+	header->header_size = sread32(mem);
+	header->backend_type = sread32(mem);
+	header->module_type = sread32(mem);
+	header->glpc_count = sread32(mem);
+}
+
+static inline void sread_glpc(uint8_t** mem, GLPushConstant* pc)
+{
+	pc->size = sread32(mem);
+	pc->offset = sread32(mem);
+	pc->uniform_arr_size = sread32(mem);
+	pc->uniform_glsl_type = (VIGLSLType)sread32(mem);
+	size_t uniform_name_size = (size_t)sread32(mem);
+	pc->uniform_name.resize(uniform_name_size);
+	sread_bytes(mem, uniform_name_size, pc->uniform_name.data());
+}
 
 static void* vi_malloc(size_t size)
 {
@@ -1617,13 +1708,38 @@ static void gl_create_module(VIDevice device, VIModule module, const VIModuleInf
 	VICompileResult result;
 	uint32_t remap_count = info->pipeline_layout->gl.remap_count;
 	const GLRemap* remaps = info->pipeline_layout->gl.remaps;
-	compile_gl(result, stage, info->vise_glsl, remap_count, remaps);
-	VI_ASSERT(result.success && "gl_create_module failed");
 
 	GLint glsl_size = result.gl_patched.size() + 1;
+	const char* glsl_data;
 
-	// copy temporary results over to VIModule
+	if (info->vise_binary)
 	{
+		VIBinaryHeader header;
+		uint8_t* now = (uint8_t*)info->vise_binary;
+		sread_header(&now, &header);
+		uint32_t header_size = header.header_size;
+
+		// load GL push constant table, used during gl_cmd_execute_push_constants
+		module->gl.push_constant_count = header.glpc_count;
+		module->gl.push_constants = (GLPushConstant*)vi_malloc(sizeof(GLPushConstant) * header.glpc_count);
+		for (uint32_t i = 0; i < module->gl.push_constant_count; i++)
+		{
+			new (module->gl.push_constants + i)GLPushConstant();
+			sread_glpc(&now, module->gl.push_constants + i);
+		}
+
+		// load patched GLSL
+		glsl_size = (GLint)header.payload_size;
+		glsl_data = ((const char*)info->vise_binary) + header_size;
+	}
+	else if (info->vise_glsl)
+	{
+		compile_gl(result, stage, info->vise_glsl, remap_count, remaps);
+		VI_ASSERT(result.success && "gl_create_module: compilation failed");
+		glsl_size = (GLint)result.gl_patched.size();
+		glsl_data = (const char*)result.gl_patched.data();
+
+		// copy GL push constant table to VIModule
 		module->gl.push_constant_count = (uint32_t)result.gl_push_constants.size();
 		module->gl.push_constants = (GLPushConstant*)vi_malloc(sizeof(GLPushConstant) * module->gl.push_constant_count);
 		for (uint32_t i = 0; i < module->gl.push_constant_count; i++)
@@ -1631,14 +1747,12 @@ static void gl_create_module(VIDevice device, VIModule module, const VIModuleInf
 			new (module->gl.push_constants + i)GLPushConstant();
 			module->gl.push_constants[i] = result.gl_push_constants[i];
 		}
-
-		module->gl.patched_glsl = (char*)vi_malloc(glsl_size);
-		memcpy(module->gl.patched_glsl, result.gl_patched.data(), glsl_size - 1);
-		module->gl.patched_glsl[glsl_size - 1] = '\0';
 	}
+	else
+		VI_UNREACHABLE;
 
 	GLuint shader = module->gl.shader = glCreateShader(glstage);
-	glShaderSource(shader, 1, &module->gl.patched_glsl, &glsl_size);
+	glShaderSource(shader, 1, &glsl_data, &glsl_size);
 	glCompileShader(shader);
 
 	GLint success;
@@ -1656,9 +1770,6 @@ static void gl_create_module(VIDevice device, VIModule module, const VIModuleInf
 
 static void gl_destroy_module(VIDevice device, VIModule module)
 {
-	vi_free(module->gl.patched_glsl);
-	module->gl.patched_glsl = nullptr;
-
 	if (module->gl.push_constant_count > 0)
 	{
 		for (uint32_t i = 0; i < module->gl.push_constant_count; i++)
@@ -2766,10 +2877,7 @@ static void compile_vk(VICompileResult& result, EShLanguage stage, const char* v
 	options.disableOptimizer = true;
 	options.optimizeSize = false;
 	options.stripDebugInfo = false;
-	glslang::GlslangToSpv(*program.getIntermediate(stage), spirv_data, &spv_logger, &options);
-
-	result.vk_spirv.resize(spirv_data.size() * 4);
-	memcpy(result.vk_spirv.data(), spirv_data.data(), result.vk_spirv.size());
+	glslang::GlslangToSpv(*program.getIntermediate(stage), result.vk_spirv, &spv_logger, &options);
 
 	result.success = true;
 }
@@ -2782,11 +2890,9 @@ static void compile_gl(VICompileResult& result, EShLanguage stage, const char* v
 	compile_vk(reflect_result, stage, vise_glsl);
 	VI_ASSERT(reflect_result.success && "compile_gl failed: unable to compile spirv");
 
-	std::vector<char>& byte_code = reflect_result.vk_spirv;
-
 	try
 	{
-		spirv_cross::CompilerGLSL compiler((uint32_t*)byte_code.data(), byte_code.size() / 4);
+		spirv_cross::CompilerGLSL compiler(reflect_result.vk_spirv);
 		//debug_print_compilation(compiler, stage);
 
 		const spirv_cross::ShaderResources& resources = compiler.get_shader_resources();
@@ -4013,13 +4119,38 @@ VIModule vi_create_module(VIDevice device, const VIModuleInfo* info)
 	EShLanguage stage;
 	cast_module_type_glslang(info->type, &stage);
 
+	const uint32_t* code;
+	size_t code_size;
 	VICompileResult result;
-	compile_vk(result, stage, info->vise_glsl);
+	std::vector<uint32_t> spirv_words;
+
+	if (info->vise_binary)
+	{
+		VIBinaryHeader* header = (VIBinaryHeader*)info->vise_binary;
+		uint32_t header_size = header->header_size;
+		uint32_t payload_size = header->payload_size;
+		uint8_t* now = ((uint8_t*)header) + header_size;
+
+		spirv_words.resize(payload_size / 4);
+		for (size_t i = 0; i < spirv_words.size(); i++)
+			spirv_words[i] = sread32(&now);
+
+		code_size = (size_t)payload_size;
+		code = spirv_words.data();
+	}
+	else if (info->vise_glsl)
+	{
+		compile_vk(result, stage, info->vise_glsl);
+		code_size = result.vk_spirv.size() * 4;
+		code = result.vk_spirv.data();
+	}
+	else
+		VI_UNREACHABLE;
 	
 	VkShaderModuleCreateInfo moduleCI{};
 	moduleCI.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	moduleCI.pCode = (const uint32_t*)result.vk_spirv.data();
-	moduleCI.codeSize = result.vk_spirv.size();
+	moduleCI.pCode = code;
+	moduleCI.codeSize = code_size;
 
 	VIVulkan* vk = &device->vk;
 	VK_CHECK(vkCreateShaderModule(vk->device, &moduleCI, NULL, &module->vk.handle));
@@ -5444,6 +5575,90 @@ void vi_cmd_pipeline_barrier_buffer_memory(VICommand cmd, VkPipelineStageFlags s
 		cast_buffer_memory_barrier(barriers[i], vk_barriers.data() + i);
 
 	vkCmdPipelineBarrier(cmd->vk.handle, src_stages, dst_stages, deps, 0, nullptr, vk_barriers.size(), vk_barriers.data(), 0, nullptr);
+}
+
+char* vi_offline_compile_binary(VIBackend backend, VIModuleType type, const VIPipelineLayoutData* layout_data, const char* vise_glsl, uint32_t* out_binary_size)
+{
+	char* payload_data;
+	size_t payload_size;
+	VICompileResult result;
+	EShLanguage stage;
+	cast_module_type_glslang(type, &stage);
+
+	std::vector<char> spirv_bytes;
+	uint32_t glpc_count = 0;
+	uint32_t header_size = sizeof(VIBinaryHeader);
+
+	if (backend == VI_BACKEND_OPENGL)
+	{
+		uint32_t set_count = layout_data->set_layout_count;
+		std::vector<uint32_t> binding_counts(set_count);
+		std::vector<const VISetBinding*> set_bindings(set_count);
+
+		for (uint32_t i = 0; i < set_count; i++)
+		{
+			const VISetLayoutInfo& set_layout = layout_data->set_layouts[i];
+			binding_counts[i] = set_layout.binding_count;
+
+			for (uint32_t j = 0; j < binding_counts[i]; j++)
+				set_bindings[i] = set_layout.bindings;
+		}
+
+		std::vector<GLRemap> remaps;
+		gl_remap(remaps, set_count, binding_counts.data(), set_bindings.data());
+		compile_gl(result, stage, vise_glsl, (uint32_t)remaps.size(), remaps.data());
+
+		glpc_count = (uint32_t)result.gl_push_constants.size();
+		for (uint32_t i = 0; i < glpc_count; i++)
+			header_size += (uint32_t)result.gl_push_constants[i].GetSerialSize();
+
+		payload_size = result.gl_patched.size();
+		payload_data = (char*)result.gl_patched.data();
+	}
+	else
+	{
+		compile_vk(result, stage, vise_glsl);
+		spirv_bytes.resize(result.vk_spirv.size() * 4);
+		uint8_t* now = (uint8_t*)spirv_bytes.data();
+		for (const uint32_t& word : result.vk_spirv)
+			swrite32(&now, word);
+
+		payload_size = spirv_bytes.size();
+		payload_data = spirv_bytes.data();
+	}
+
+	// serializtaion
+	// - header consists of VIBinaryHeader fields and GLPushConstant entries
+	// - binary payload is SPIRV for Vulkan or patched GLSL for OpenGL
+
+	VIBinaryHeader header;
+	header.backend_type = backend;
+	header.module_type = type;
+	header.glpc_count = glpc_count;
+	header.header_size = header_size;
+	header.payload_size = payload_size;
+
+	uint32_t binary_size = header_size + payload_size;
+	uint8_t* binary = (uint8_t*)vi_malloc(binary_size);
+	uint8_t* now = binary;
+	swrite_header(&now, header);
+
+	for (const GLPushConstant& pc : result.gl_push_constants)
+		swrite_glpc(&now, pc);
+
+	swrite_bytes(&now, payload_size, payload_data);
+
+	VI_ASSERT(now - binary == binary_size);
+
+	if (out_binary_size)
+		*out_binary_size = binary_size;
+
+	return (char*)binary;
+}
+
+void vi_offline_free(void* data)
+{
+	vi_free(data);
 }
 
 VkInstance vi_device_unwrap_instance(VIDevice device)
