@@ -252,6 +252,7 @@ void GLTFTexture::LoadFromImage(tinygltf::Image& gltf, VIDevice device)
 
 	VIImageInfo imageI = MakeImageInfo2D(VI_FORMAT_RGBA8, gltf.width, gltf.height, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	imageI.usage = VI_IMAGE_USAGE_TRANSFER_DST_BIT | VI_IMAGE_USAGE_SAMPLED_BIT;
+	imageI.sampler.address_mode = VI_SAMPLER_ADDRESS_MODE_REPEAT; // TODO: respect glTF samplers
 	Image = CreateImageStaged(device, &imageI, gltf.image.data(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
@@ -440,61 +441,96 @@ void GLTFModel::LoadMaterials(tinygltf::Model& tinyModel)
 		{
 			float value = static_cast<float>(tinyMat.values["roughnessFactor"].number_value);
 			mat.RoughnessFactor = value;
-			// TODO: ubo
+			ubo.RoughnessFactor = value;
+		}
+		else
+		{
+			mat.RoughnessFactor = 1.0f;
+			ubo.RoughnessFactor = 1.0f;
 		}
 
 		if (tinyMat.values.find("metallicFactor") != tinyMat.values.end())
 		{
 			float value = static_cast<float>(tinyMat.values["metallicFactor"].number_value);
 			mat.MetallicFactor = value;
-			// TODO: ubo
+			ubo.MetallicFactor = value;
+		}
+		else
+		{
+			mat.MetallicFactor = 1.0f;
+			ubo.MetallicFactor = 1.0f;
 		}
 
 		if (tinyMat.values.find("baseColorTexture") != tinyMat.values.end())
 		{
-			uint32_t source = tinyModel.textures[tinyMat.values["baseColorTexture"].TextureIndex()].source;
+			int source = tinyModel.textures[tinyMat.values["baseColorTexture"].TextureIndex()].source;
+			int coordSet = tinyMat.values["baseColorTexture"].TextureTexCoord();
 			mat.BaseColorTexture = mTextures.data() + source;
+			mat.TexCoordSet.Color = coordSet;
 			ubo.HasColorMap = true;
 		}
 		else
 		{
 			mat.BaseColorTexture = &mEmptyTexture;
+			mat.TexCoordSet.Color = 0;
 			ubo.HasColorMap = false;
 		}
 
 		if (tinyMat.additionalValues.find("normalTexture") != tinyMat.additionalValues.end())
 		{
-			uint32_t source = tinyModel.textures[tinyMat.additionalValues["normalTexture"].TextureIndex()].source;
+			int source = tinyModel.textures[tinyMat.additionalValues["normalTexture"].TextureIndex()].source;
+			int coordSet = tinyMat.additionalValues["normalTexture"].TextureTexCoord();
 			mat.NormalTexture = mTextures.data() + source;
+			mat.TexCoordSet.Normal = coordSet;
 			ubo.HasNormalMap = true;
 		}
 		else
 		{
 			mat.NormalTexture = &mEmptyTexture;
+			mat.TexCoordSet.Normal = 0;
 			ubo.HasNormalMap = false;
 		}
 
 		if (tinyMat.additionalValues.find("emissiveTexture") != tinyMat.additionalValues.end())
 		{
-			uint32_t source = tinyModel.textures[tinyMat.additionalValues["emissiveTexture"].TextureIndex()].source;
+			int source = tinyModel.textures[tinyMat.additionalValues["emissiveTexture"].TextureIndex()].source;
+			int coordSet = tinyMat.additionalValues["emissiveTexture"].TextureTexCoord();
+			mat.TexCoordSet.Emissive = coordSet;
 			mat.EmissiveTexture = mTextures.data() + source;
+		}
+		else
+		{
+			mat.EmissiveTexture = &mEmptyTexture;
+			mat.TexCoordSet.Emissive = 0;
 		}
 
 		if (tinyMat.additionalValues.find("occlusionTexture") != tinyMat.additionalValues.end())
 		{
-			uint32_t source = tinyModel.textures[tinyMat.additionalValues["occlusionTexture"].TextureIndex()].source;
+			int source = tinyModel.textures[tinyMat.additionalValues["occlusionTexture"].TextureIndex()].source;
+			int coordSet = tinyMat.additionalValues["occlusionTexture"].TextureTexCoord();
+			mat.TexCoordSet.Occlusion = coordSet;
 			mat.OcclusionTexture = mTextures.data() + source;
+			ubo.HasOcclusionMap = true;
+		}
+		else
+		{
+			mat.OcclusionTexture = &mEmptyTexture;
+			mat.TexCoordSet.Occlusion = 0;
+			ubo.HasOcclusionMap = false;
 		}
 
 		if (tinyMat.values.find("metallicRoughnessTexture") != tinyMat.values.end())
 		{
-			uint32_t source = tinyModel.textures[tinyMat.values["metallicRoughnessTexture"].TextureIndex()].source;
+			int source = tinyModel.textures[tinyMat.values["metallicRoughnessTexture"].TextureIndex()].source;
+			int coordSet = tinyMat.values["metallicRoughnessTexture"].TextureTexCoord();
+			mat.TexCoordSet.MetallicRoughness = coordSet;
 			mat.MetallicRoughnessTexture = mTextures.data() + source;
 			ubo.HasMetallicRoughnessMap = true;
 		}
 		else
 		{
 			mat.MetallicRoughnessTexture = &mEmptyTexture;
+			mat.TexCoordSet.MetallicRoughness = 0;
 			ubo.HasMetallicRoughnessMap = false;
 		}
 
@@ -513,6 +549,15 @@ void GLTFModel::LoadMaterials(tinygltf::Model& tinyModel)
 			mat.AlphaCutoff = value;
 		}
 
+		// If any of these assertions fail, "TEXCOORD_1" or above is used,
+		// requiring new vertex attributes and shader logic to determine coord set at runtime.
+		// currently only TEXCOORD_0 is supported.
+		assert(mat.TexCoordSet.Color == 0);
+		assert(mat.TexCoordSet.Normal == 0);
+		assert(mat.TexCoordSet.MetallicRoughness == 0);
+		assert(mat.TexCoordSet.Emissive == 0);
+		assert(mat.TexCoordSet.Occlusion == 0);
+
 		VIBufferInfo bufferI;
 		bufferI.properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 		bufferI.type = VI_BUFFER_TYPE_UNIFORM;
@@ -528,8 +573,13 @@ void GLTFModel::LoadNode(tinygltf::Model& tinyModel, tinygltf::Node& tinyNode, u
 	node->Index = nodeIndex;
 	node->Parent = parent;
 	node->Name = tinyNode.name;
-	node->Transform = glm::mat4(1.0f);
 	node->Mesh = nullptr;
+	node->Transform = glm::mat4(1.0f);
+	node->Translation = glm::vec3(0.0f);
+	node->Rotation = glm::quat();
+	node->Scale = glm::vec3(1.0f);
+
+	glm::mat4 parentTransform = parent ? parent->Transform : glm::mat4(1.0f);
 
 	mNodes.push_back(node);
 
@@ -537,16 +587,15 @@ void GLTFModel::LoadNode(tinygltf::Model& tinyModel, tinygltf::Node& tinyNode, u
 		node->Translation = glm::make_vec3(tinyNode.translation.data());
 
 	if (tinyNode.rotation.size() == 4)
-	{
-		glm::quat q = glm::make_quat(tinyNode.rotation.data());
-		node->Rotation = glm::mat4(q); // ????
-	}
+		node->Rotation = glm::make_quat(tinyNode.rotation.data());
 
 	if (tinyNode.scale.size() == 3)
 		node->Scale = glm::make_vec3(tinyNode.scale.data());
 
 	if (tinyNode.matrix.size() == 16)
-		node->Transform = glm::make_mat4x4(tinyNode.matrix.data());
+		node->Transform = glm::mat4(glm::make_mat4x4(tinyNode.matrix.data())) * parentTransform;
+	else
+		node->Transform = glm::translate(glm::mat4(1.0f), node->Translation) * glm::mat4(node->Rotation) * glm::scale(parentTransform, node->Scale);
 
 	for (size_t i = 0; i < tinyNode.children.size(); i++)
 		LoadNode(tinyModel, tinyModel.nodes[tinyNode.children[i]], tinyNode.children[i], node);
@@ -608,7 +657,6 @@ GLTFMesh* GLTFModel::LoadMesh(tinygltf::Model& tinyModel, tinygltf::Mesh& tinyMe
 				uv0ByteStride = uvAccessor.ByteStride(uvView) ? (uvAccessor.ByteStride(uvView) / sizeof(float)) : tinygltf::GetNumComponentsInType(TINYGLTF_TYPE_VEC2);
 			}
 
-			//assert(tinyPrim.attributes.find("TEXCOORD_1") == tinyPrim.attributes.end());
 			assert(tinyPrim.attributes.find("COLOR_0") == tinyPrim.attributes.end());
 
 			for (uint32_t v = 0; v < vertexCount; v++)
@@ -616,7 +664,7 @@ GLTFMesh* GLTFModel::LoadMesh(tinygltf::Model& tinyModel, tinygltf::Mesh& tinyMe
 				GLTFVertex& vert = mVertices[mVertexBase++];
 				vert.Position = glm::vec4(glm::make_vec3(&bufferPos[v * posByteStride]), 1.0f);
 				vert.Normal = glm::normalize(glm::vec3(bufferNormals ? glm::make_vec3(&bufferNormals[v * normByteStride]) : glm::vec3(0.0f)));
-				vert.TextureUV = bufferTexCoordSet0 ? glm::make_vec2(&bufferTexCoordSet0[v * uv0ByteStride]) : glm::vec3(0.0f);
+				vert.TextureUV = bufferTexCoordSet0 ? glm::make_vec2(&bufferTexCoordSet0[v * uv0ByteStride]) : glm::vec2(0.0f);
 			}
 		}
 

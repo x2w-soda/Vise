@@ -394,6 +394,9 @@ layout (set = 1, binding = 0) uniform uMat
 	uint has_color_map;
 	uint has_normal_map;
 	uint has_metallic_roughness_map;
+	uint has_occlusion_map;
+	float metallic_factor;
+	float roughness_factor;
 } Mat;
 
 layout (set = 1, binding = 1) uniform sampler2D uMatColor;
@@ -415,8 +418,8 @@ void main()
     vec3 R = reflect(-V, N);   
 	vec4 MR = texture(uMatMR, vUV);
 	float NdotV = max(dot(N, V), 0.0);
-	float roughness = clamp(MR.g, 0.0, 1.0);
-	float metallic = clamp(MR.b, 0.0, 1.0);
+	float roughness = clamp(MR.g * Mat.roughness_factor, 0.0, 1.0);
+	float metallic = clamp(MR.b * Mat.metallic_factor, 0.0, 1.0);
 	
 	// overrides
 	roughness = clamp(roughness, 0.0, Scene.clamp_max_roughness);

@@ -116,6 +116,9 @@ struct GLTFMaterialUBO
 	uint32_t HasColorMap;
 	uint32_t HasNormalMap;
 	uint32_t HasMetallicRoughnessMap;
+	uint32_t HasOcclusionMap;
+	float MetallicFactor;
+	float RoughnessFactor;
 };
 
 struct GLTFMaterial
@@ -141,6 +144,14 @@ struct GLTFMaterial
 	GLTFTexture* EmissiveTexture = nullptr;
 	GLTFTexture* OcclusionTexture = nullptr;
 	GLTFTexture* MetallicRoughnessTexture = nullptr;
+	struct
+	{
+		int Color;
+		int Normal;
+		int Emissive;
+		int Occlusion;
+		int MetallicRoughness;
+	} TexCoordSet;
 };
 
 struct GLTFNode
