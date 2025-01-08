@@ -523,8 +523,8 @@ ExamplePBR::ExamplePBR(VIBackend backend)
 	bufferI.properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 	mSkyboxVBO = CreateBufferStaged(mDevice, &bufferI, vertices);
 
-	mSkyboxVM = CreateModule(mDevice, mPipelineLayoutSingleImage, VI_MODULE_TYPE_VERTEX, skybox_vertex_glsl);
-	mSkyboxFM = CreateModule(mDevice, mPipelineLayoutSingleImage, VI_MODULE_TYPE_FRAGMENT, skybox_fragment_glsl);
+	mSkyboxVM = CreateOrLoadModule(mDevice, mBackend, mPipelineLayoutSingleImage, VI_MODULE_TYPE_VERTEX, skybox_vertex_glsl, "skybox_vm");
+	mSkyboxFM = CreateOrLoadModule(mDevice, mBackend, mPipelineLayoutSingleImage, VI_MODULE_TYPE_FRAGMENT, skybox_fragment_glsl, "skybox_fm");
 
 	VIPipelineInfo pipelineI;
 	pipelineI.layout = mPipelineLayoutSingleImage;
@@ -539,8 +539,8 @@ ExamplePBR::ExamplePBR(VIBackend backend)
 	pipelineI.depth_stencil_state.depth_write_enabled = false;
 	mSkyboxPipeline = vi_create_pipeline(mDevice, &pipelineI);
 
-	mPBRVM = CreateModule(mDevice, mPipelineLayoutPBR, VI_MODULE_TYPE_VERTEX, pbr_vertex_glsl);
-	mPBRFM = CreateModule(mDevice, mPipelineLayoutPBR, VI_MODULE_TYPE_FRAGMENT, pbr_fragment_glsl);
+	mPBRVM = CreateOrLoadModule(mDevice, mBackend, mPipelineLayoutPBR, VI_MODULE_TYPE_VERTEX, pbr_vertex_glsl, "pbr_vm");
+	mPBRFM = CreateOrLoadModule(mDevice, mBackend, mPipelineLayoutPBR, VI_MODULE_TYPE_FRAGMENT, pbr_fragment_glsl, "pbr_fm");
 
 	VIVertexBinding pbrVertBinding;
 	std::vector<VIVertexAttribute> pbrVertAttributes;
@@ -638,13 +638,13 @@ ExamplePBR::ExamplePBR(VIBackend backend)
 		framebufferI.color_attachments = &mBRDFLUT;
 		mBRDFLUTFBO = vi_create_framebuffer(mDevice, &framebufferI);
 
-		mCubemapFaceVM = CreateModule(mDevice, mPipelineLayoutSingleImage, VI_MODULE_TYPE_VERTEX, cubemap_face_vertex_glsl);
-		mHDRI2CubeFM = CreateModule(mDevice, mPipelineLayoutSingleImage, VI_MODULE_TYPE_FRAGMENT, hdri_to_cube_fragment_glsl);
-		mIrradianceFM = CreateModule(mDevice, mPipelineLayoutSingleImage, VI_MODULE_TYPE_FRAGMENT, irradiance_fragment_glsl);
-		mPrefilterFM = CreateModule(mDevice, mPipelineLayoutSingleImage, VI_MODULE_TYPE_FRAGMENT, prefilter_fragment_glsl);
+		mCubemapFaceVM = CreateOrLoadModule(mDevice, mBackend, mPipelineLayoutSingleImage, VI_MODULE_TYPE_VERTEX, cubemap_face_vertex_glsl, "cubemap_face_vm");
+		mHDRI2CubeFM = CreateOrLoadModule(mDevice, mBackend, mPipelineLayoutSingleImage, VI_MODULE_TYPE_FRAGMENT, hdri_to_cube_fragment_glsl, "hdri_to_cube_fm");
+		mIrradianceFM = CreateOrLoadModule(mDevice, mBackend, mPipelineLayoutSingleImage, VI_MODULE_TYPE_FRAGMENT, irradiance_fragment_glsl, "irradiance_fm");
+		mPrefilterFM = CreateOrLoadModule(mDevice, mBackend, mPipelineLayoutSingleImage, VI_MODULE_TYPE_FRAGMENT, prefilter_fragment_glsl, "prefilter_fm");
 
-		mBRDFLUTVM = CreateModule(mDevice, mPipelineLayoutSingleImage, VI_MODULE_TYPE_VERTEX, brdflut_vertex_glsl);
-		mBRDFLUTFM = CreateModule(mDevice, mPipelineLayoutSingleImage, VI_MODULE_TYPE_FRAGMENT, brdflut_fragment_glsl);
+		mBRDFLUTVM = CreateOrLoadModule(mDevice, mBackend, mPipelineLayoutSingleImage, VI_MODULE_TYPE_VERTEX, brdflut_vertex_glsl, "brdflut_vm");
+		mBRDFLUTFM = CreateOrLoadModule(mDevice, mBackend, mPipelineLayoutSingleImage, VI_MODULE_TYPE_FRAGMENT, brdflut_fragment_glsl, "brdflut_fm");
 
 		VIPipelineInfo pipelineI;
 		pipelineI.pass = mCubemapPass;

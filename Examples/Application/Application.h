@@ -32,6 +32,9 @@ VIPipelineLayout CreatePipelineLayout(VIDevice device, const std::initializer_li
 // helper to reduce shader module creation verbosity
 VIModule CreateModule(VIDevice device, VIPipelineLayout layout, VIModuleType type, const char* vise_glsl);
 
+// helper to cache module on disk
+VIModule CreateOrLoadModule(VIDevice device, VIBackend backend, VIPipelineLayout layout, VIModuleType type, const char* vise_glsl, const char* name);
+
 // helper to reduce set allocation verbosity
 VISet AllocAndUpdateSet(VIDevice device, VISetPool pool, VISetLayout layout, const std::initializer_list<VISetUpdateInfo>& updates);
 

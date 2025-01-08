@@ -2,7 +2,7 @@
 #include <imgui.h>
 #include "ExamplePostProcess.h"
 
-static char render_vertex_src[] = R"(
+static char render_vm_glsl[] = R"(
 #version 460
 layout (location = 0) in vec3 aPosition;
 layout (location = 1) in vec3 aNormal;
@@ -26,7 +26,7 @@ void main()
 }
 )";
 
-static char render_fragment_src[] = R"(
+static char render_fm_glsl[] = R"(
 #version 460
 layout (location = 0) in vec3 vPosition;
 layout (location = 1) in vec3 vNormal;
@@ -51,7 +51,7 @@ void main()
 }
 )";
 
-static char postprocess_vertex_src[] = R"(
+static char postprocess_vm_glsl[] = R"(
 #version 460
 layout (location = 0) in vec2 aPosition;
 layout (location = 1) in vec2 aTextureUV;
@@ -64,7 +64,7 @@ void main()
 }
 )";
 
-static char none_fragment_src[] = R"(
+static char none_fm_glsl[] = R"(
 #version 460
 layout (location = 0) in vec2 vTextureUV;
 layout (location = 0) out vec4 fColor;
@@ -77,7 +77,7 @@ void main()
 }
 )";
 
-static char invert_fragment_src[] = R"(
+static char invert_fm_glsl[] = R"(
 #version 460
 layout (location = 0) in vec2 vTextureUV;
 layout (location = 0) out vec4 fColor;
@@ -91,7 +91,7 @@ void main()
 }
 )";
 
-static char grayscale_fragment_src[] = R"(
+static char grayscale_fm_glsl[] = R"(
 #version 460
 layout (location = 0) in vec2 vTextureUV;
 layout (location = 0) out vec4 fColor;
@@ -178,12 +178,12 @@ ExamplePostProcess::ExamplePostProcess(VIBackend backend)
 		mPostProcessPass = vi_device_get_swapchain_pass(mDevice);
 	}
 
-	mVMRender = CreateModule(mDevice, mPipelineLayout, VI_MODULE_TYPE_VERTEX, render_vertex_src);
-	mFMRender = CreateModule(mDevice, mPipelineLayout, VI_MODULE_TYPE_FRAGMENT, render_fragment_src);
-	mVMPostProcess = CreateModule(mDevice, mPipelineLayout, VI_MODULE_TYPE_VERTEX, postprocess_vertex_src);
-	mFMGrayscale = CreateModule(mDevice, mPipelineLayout, VI_MODULE_TYPE_FRAGMENT, grayscale_fragment_src);
-	mFMInvert = CreateModule(mDevice, mPipelineLayout, VI_MODULE_TYPE_FRAGMENT, invert_fragment_src);
-	mFMNone = CreateModule(mDevice, mPipelineLayout, VI_MODULE_TYPE_FRAGMENT, none_fragment_src);
+	mVMRender = CreateOrLoadModule(mDevice, mBackend, mPipelineLayout, VI_MODULE_TYPE_VERTEX, render_vm_glsl, "render_vm");
+	mFMRender = CreateOrLoadModule(mDevice, mBackend, mPipelineLayout, VI_MODULE_TYPE_FRAGMENT, render_fm_glsl, "render_fm");
+	mVMPostProcess = CreateOrLoadModule(mDevice, mBackend, mPipelineLayout, VI_MODULE_TYPE_VERTEX, postprocess_vm_glsl, "postprocess_vm");
+	mFMGrayscale = CreateOrLoadModule(mDevice, mBackend, mPipelineLayout, VI_MODULE_TYPE_FRAGMENT, grayscale_fm_glsl, "grayscale_fm");
+	mFMInvert = CreateOrLoadModule(mDevice, mBackend, mPipelineLayout, VI_MODULE_TYPE_FRAGMENT, invert_fm_glsl, "invert_fm");
+	mFMNone = CreateOrLoadModule(mDevice, mBackend, mPipelineLayout, VI_MODULE_TYPE_FRAGMENT, none_fm_glsl, "none_fm");
 
 	VIVertexBinding vertexBinding;
 	std::vector<VIVertexAttribute> vertexAttrs;

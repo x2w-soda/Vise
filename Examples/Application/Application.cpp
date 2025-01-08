@@ -1,10 +1,13 @@
 #include <iostream>
+#include <fstream>
 #include <filesystem>
+#include <sstream>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_vulkan.h>
 #include "Application.h"
+#include "Common.h"
 
 Application* Application::sInstance = nullptr;
 
@@ -45,6 +48,88 @@ VIModule CreateModule(VIDevice device, VIPipelineLayout layout, VIModuleType typ
 	info.vise_glsl = vise_glsl;
 
 	return vi_create_module(device, &info);
+}
+
+VIModule CreateOrLoadModule(VIDevice device, VIBackend backend, VIPipelineLayout layout, VIModuleType type, const char* vise_glsl, const char* name)
+{
+	Timer timer;
+	timer.Start();
+
+	std::string glsl(vise_glsl);
+	std::string path(name);
+
+	path += backend == VI_BACKEND_VULKAN ? "_vk" : "_gl";
+	std::string path_to_hash = path;
+	std::string path_to_binary = path;
+	std::stringstream ss;
+
+	path_to_hash += ".txt";
+	path_to_binary += ".bin";
+
+	ss << std::hash<std::string>{}(glsl);
+	std::string glsl_hash = ss.str();
+	bool use_disk_binary = false;
+
+	std::ifstream hash_file(path_to_hash.c_str(), std::ios::binary | std::ios::ate);
+	std::ifstream binary_file(path_to_binary.c_str(), std::ios::binary | std::ios::ate);
+	std::vector<char> binary;
+
+	if (hash_file && binary_file)
+	{
+		std::streampos end = hash_file.tellg();
+		hash_file.seekg(0, std::ios::beg);
+
+		size_t size = static_cast<size_t>(end - hash_file.tellg());
+		std::string disk_hash;
+
+		disk_hash.resize(size);
+		if (hash_file.read(disk_hash.data(), disk_hash.size()))
+			use_disk_binary = disk_hash == glsl_hash;
+	}
+
+	VIModuleInfo moduleI;
+	moduleI.type = type;
+	moduleI.pipeline_layout = layout;
+	moduleI.vise_glsl = nullptr;
+
+	VIModule result = VI_NULL;
+
+	if (use_disk_binary)
+	{
+		std::streampos end = binary_file.tellg();
+		binary_file.seekg(0, std::ios::beg);
+
+		size_t size = static_cast<size_t>(end - binary_file.tellg());
+		binary.resize(size);
+		binary_file.read(binary.data(), binary.size());
+
+		moduleI.vise_binary = binary.data();
+		result = vi_create_module(device, &moduleI);
+	}
+	else
+	{
+		uint32_t binary_size;
+		char* binary = vi_compile_binary(device, type, layout, vise_glsl, &binary_size);
+
+		std::ofstream out_hash_file;
+		out_hash_file.open(path_to_hash);
+		out_hash_file.write(glsl_hash.data(), glsl_hash.size());
+		out_hash_file.close();
+
+		std::ofstream out_binary_file;
+		out_binary_file.open(path_to_binary, std::ios::out | std::ios::binary);
+		out_binary_file.write(binary, binary_size);
+		out_binary_file.close();
+
+		moduleI.vise_binary = binary;
+		result = vi_create_module(device, &moduleI);
+		vi_free(binary);
+	}
+
+	timer.Stop();
+	std::cout << (use_disk_binary ? "loaded " : "created ") << "module " << name << " (" << timer.GetMilliSeconds() << " ms)" << std::endl;
+
+	return result;
 }
 
 VISet AllocAndUpdateSet(VIDevice device, VISetPool pool, VISetLayout layout, const std::initializer_list<VISetUpdateInfo>& updates)

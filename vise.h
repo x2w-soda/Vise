@@ -589,8 +589,9 @@ VI_API void vi_cmd_pipeline_barrier_memory(VICommand cmd, VkPipelineStageFlags s
 VI_API void vi_cmd_pipeline_barrier_image_memory(VICommand cmd, VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages, VkDependencyFlags deps, uint32_t barrier_count, const VIImageMemoryBarrier* barriers);
 VI_API void vi_cmd_pipeline_barrier_buffer_memory(VICommand cmd, VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages, VkDependencyFlags deps, uint32_t barrier_count, const VIBufferMemoryBarrier* barriers);
 
-VI_API char* vi_offline_compile_binary(VIBackend backend, VIModuleType type, const VIPipelineLayoutData* pipeline_layout, const char* vise_glsl, uint32_t* binary_size);
-VI_API void vi_offline_free(void* data);
+VI_API char* vi_compile_binary_offline(VIBackend backend, VIModuleType type, const VIPipelineLayoutData* pipeline_layout, const char* vise_glsl, uint32_t* binary_size);
+VI_API char* vi_compile_binary(VIDevice device, VIModuleType type, VIPipelineLayout pipeline_layout, const char* vise_glsl, uint32_t* binary_size);
+VI_API void vi_free(void* data);
 
 VI_API VkInstance vi_device_unwrap_instance(VIDevice device);
 VI_API VkDevice vi_device_unwrap(VIDevice device);

@@ -116,8 +116,9 @@ struct HostMalloc;
 struct VICompileResult;
 struct VIBinaryHeader;
 
-static void* vi_malloc(size_t size);
-static void vi_free(void* ptr);
+// TODO: user dependency injection
+void* vi_malloc(size_t size);
+void vi_free(void* ptr);
 
 enum VIImageFlagBits
 {
@@ -1061,7 +1062,7 @@ static inline void sread_glpc(uint8_t** mem, GLPushConstant* pc)
 	sread_bytes(mem, uniform_name_size, pc->uniform_name.data());
 }
 
-static void* vi_malloc(size_t size)
+void* vi_malloc(size_t size)
 {
 	HostMalloc* header = (HostMalloc*)malloc(size + sizeof(HostMalloc));
 	VI_ASSERT(header != nullptr);
@@ -1075,7 +1076,7 @@ static void* vi_malloc(size_t size)
 	return ((char*)header) + sizeof(HostMalloc);
 }
 
-static void vi_free(void* ptr)
+void vi_free(void* ptr)
 {
 	VI_ASSERT(ptr != nullptr);
 
@@ -5577,7 +5578,38 @@ void vi_cmd_pipeline_barrier_buffer_memory(VICommand cmd, VkPipelineStageFlags s
 	vkCmdPipelineBarrier(cmd->vk.handle, src_stages, dst_stages, deps, 0, nullptr, vk_barriers.size(), vk_barriers.data(), 0, nullptr);
 }
 
-char* vi_offline_compile_binary(VIBackend backend, VIModuleType type, const VIPipelineLayoutData* layout_data, const char* vise_glsl, uint32_t* out_binary_size)
+char* vi_compile_binary(VIDevice device, VIModuleType type, VIPipelineLayout layout, const char* vise_glsl, uint32_t* binary_size)
+{
+	uint32_t set_layout_count = (uint32_t)layout->set_layouts.size();
+	std::vector<VISetLayoutInfo> set_layouts(set_layout_count);
+
+	uint32_t binding_ctr = 0;
+	for (size_t i = 0; i < set_layout_count; i++)
+		binding_ctr += (uint32_t)layout->set_layouts[i]->bindings.size();
+
+	std::vector<VISetBinding> set_bindings(binding_ctr);
+	binding_ctr = 0;
+
+	for (uint32_t i = 0; i < set_layout_count; i++)
+	{
+		const std::vector<VISetBinding>& bindings = layout->set_layouts[i]->bindings;
+		uint32_t binding_count = (uint32_t)bindings.size();
+
+		set_layouts[i].binding_count = binding_count;
+		set_layouts[i].bindings = set_bindings.data() + binding_ctr;
+
+		for (uint32_t j = 0; j < binding_count; j++)
+			set_bindings[binding_ctr++] = bindings[j];
+	}
+
+	VIPipelineLayoutData layout_data;
+	layout_data.push_constant_size = layout->push_constant_size;
+	layout_data.set_layout_count = set_layout_count;
+	layout_data.set_layouts = set_layouts.data();
+	return vi_compile_binary_offline(device->backend, type, &layout_data, vise_glsl, binary_size);
+}
+
+char* vi_compile_binary_offline(VIBackend backend, VIModuleType type, const VIPipelineLayoutData* layout_data, const char* vise_glsl, uint32_t* out_binary_size)
 {
 	char* payload_data;
 	size_t payload_size;
