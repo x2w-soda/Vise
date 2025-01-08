@@ -226,6 +226,20 @@ VIPassColorAttachment MakePassColorAttachment(VIFormat format, VkAttachmentLoadO
 	return pass_color_attachment;
 }
 
+VIPassDepthStencilAttachment MakePassDepthAttachment(VIFormat depth_format, VkAttachmentLoadOp depth_load_op, VkAttachmentStoreOp depth_store_op, VkImageLayout initial_layout, VkImageLayout final_layout)
+{
+	VIPassDepthStencilAttachment pass_depth_attachment{};
+	pass_depth_attachment.depth_stencil_format = depth_format;
+	pass_depth_attachment.depth_load_op = depth_load_op;
+	pass_depth_attachment.depth_store_op = depth_store_op;
+	pass_depth_attachment.stencil_load_op = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	pass_depth_attachment.stencil_store_op = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	pass_depth_attachment.initial_layout = initial_layout;
+	pass_depth_attachment.final_layout = final_layout;
+
+	return pass_depth_attachment;
+}
+
 VkSubpassDependency MakeSubpassDependency(
 	uint32_t src_subpass, VkPipelineStageFlags src_stages, VkAccessFlags src_access,
 	uint32_t dst_subpass, VkPipelineStageFlags dst_stages, VkAccessFlags dst_access)

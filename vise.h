@@ -133,6 +133,7 @@ enum VIFormat
 	VI_FORMAT_RGBA32F,
 	VI_FORMAT_D32F_S8U,
 	VI_FORMAT_D24_S8U,
+	VI_FORMAT_D32F,
 };
 
 enum VIBufferUsageBit : uint32_t

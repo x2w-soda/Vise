@@ -58,6 +58,10 @@ VIImageInfo MakeImageInfoCube(VIFormat format, uint32_t dim, VkMemoryPropertyFla
 VIPassColorAttachment MakePassColorAttachment(VIFormat format, VkAttachmentLoadOp load_op, VkAttachmentStoreOp store_op,
 	VkImageLayout initial_layout, VkImageLayout final_layout);
 
+// helper to reduce render pass depth attachment verbosity
+VIPassDepthStencilAttachment MakePassDepthAttachment(VIFormat depth_format, VkAttachmentLoadOp depth_load_op, VkAttachmentStoreOp depth_store_op,
+	VkImageLayout initial_layout, VkImageLayout final_layout);
+
 // helper to reduce subpass dependency verbosity
 VkSubpassDependency MakeSubpassDependency(uint32_t src_subpass, VkPipelineStageFlags src_stages, VkAccessFlags src_access,
 	uint32_t dst_subpass, VkPipelineStageFlags dst_stages, VkAccessFlags dst_access);

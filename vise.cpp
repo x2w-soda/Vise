@@ -780,6 +780,7 @@ static void cast_blend_op_gl(VIBlendOp in_op, GLenum* out_op);
 static void cast_format_vk(VIFormat in_format, VkFormat* out_format, VkImageAspectFlags* out_aspects);
 static void cast_format_vk(VkFormat in_format, VIFormat* out_format);
 static void cast_format_gl(VIFormat in_format, GLenum* out_internal_format, GLenum* out_data_format, GLenum* out_data_type, uint32_t* out_texel_size);
+static void cast_format_attachment_gl(VIFormat in_format, GLenum* out_attachment);
 static void cast_set_pool_resources(uint32_t in_res_count, const VISetPoolResource* in_res, std::vector<VkDescriptorPoolSize>& out_sizes);
 static void cast_set_binding(const VISetBinding* in_binding, VkDescriptorSetLayoutBinding* out_binding);
 static void cast_set_binding_type(VISetBindingType in_type, VkDescriptorType* out_type);
@@ -976,17 +977,18 @@ struct VIFormatEntry
 	GLenum gl_data_type;
 };
 
-static const VIFormatEntry vi_format_table[10] = {
-	{ VI_FORMAT_UNDEFINED, (VIImageAspectFlags)0,        VK_FORMAT_UNDEFINED,           0,  GL_NONE,              GL_NONE,          GL_NONE },
-	{ VI_FORMAT_RGBA8,    VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R8G8B8A8_UNORM,      4,  GL_RGBA8,             GL_RGBA,          GL_UNSIGNED_BYTE },
-	{ VI_FORMAT_BGRA8,    VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_B8G8R8A8_UNORM,      4,  GL_RGBA8,             GL_BGRA,          GL_UNSIGNED_BYTE },
-	{ VI_FORMAT_RG16F,    VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R16G16_SFLOAT,       4,  GL_RG16F,             GL_RG,            GL_HALF_FLOAT },
-	{ VI_FORMAT_RGB16F,   VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R16G16B16_SFLOAT,    6,  GL_RGB16F,            GL_RGB,           GL_HALF_FLOAT },
-	{ VI_FORMAT_RGBA16F,  VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R16G16B16A16_SFLOAT, 8,  GL_RGBA16F,           GL_RGBA,          GL_HALF_FLOAT },
-	{ VI_FORMAT_RGB32F,   VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R32G32B32_SFLOAT,    12, GL_RGB32F,            GL_RGB,           GL_FLOAT },
-	{ VI_FORMAT_RGBA32F,  VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R32G32B32A32_SFLOAT, 16, GL_RGBA32F,           GL_RGBA,          GL_FLOAT },
-	{ VI_FORMAT_D32F_S8U, VI_IMAGE_ASPECT_DEPTH_STENCIL, VK_FORMAT_D32_SFLOAT_S8_UINT,  5,  GL_DEPTH32F_STENCIL8, GL_DEPTH_STENCIL, GL_FLOAT_32_UNSIGNED_INT_24_8_REV },
-	{ VI_FORMAT_D24_S8U,  VI_IMAGE_ASPECT_DEPTH_STENCIL, VK_FORMAT_D24_UNORM_S8_UINT,   4,  GL_DEPTH24_STENCIL8,  GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, }
+static const VIFormatEntry vi_format_table[] = {
+	{ VI_FORMAT_UNDEFINED, (VIImageAspectFlags)0,        VK_FORMAT_UNDEFINED,           0,  GL_NONE,               GL_NONE,            GL_NONE },
+	{ VI_FORMAT_RGBA8,    VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R8G8B8A8_UNORM,      4,  GL_RGBA8,              GL_RGBA,            GL_UNSIGNED_BYTE },
+	{ VI_FORMAT_BGRA8,    VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_B8G8R8A8_UNORM,      4,  GL_RGBA8,              GL_BGRA,            GL_UNSIGNED_BYTE },
+	{ VI_FORMAT_RG16F,    VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R16G16_SFLOAT,       4,  GL_RG16F,              GL_RG,              GL_HALF_FLOAT },
+	{ VI_FORMAT_RGB16F,   VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R16G16B16_SFLOAT,    6,  GL_RGB16F,             GL_RGB,             GL_HALF_FLOAT },
+	{ VI_FORMAT_RGBA16F,  VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R16G16B16A16_SFLOAT, 8,  GL_RGBA16F,            GL_RGBA,            GL_HALF_FLOAT },
+	{ VI_FORMAT_RGB32F,   VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R32G32B32_SFLOAT,    12, GL_RGB32F,             GL_RGB,             GL_FLOAT },
+	{ VI_FORMAT_RGBA32F,  VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R32G32B32A32_SFLOAT, 16, GL_RGBA32F,            GL_RGBA,            GL_FLOAT },
+	{ VI_FORMAT_D32F_S8U, VI_IMAGE_ASPECT_DEPTH_STENCIL, VK_FORMAT_D32_SFLOAT_S8_UINT,  5,  GL_DEPTH32F_STENCIL8,  GL_DEPTH_STENCIL,   GL_FLOAT_32_UNSIGNED_INT_24_8_REV },
+	{ VI_FORMAT_D24_S8U,  VI_IMAGE_ASPECT_DEPTH_STENCIL, VK_FORMAT_D24_UNORM_S8_UINT,   4,  GL_DEPTH24_STENCIL8,   GL_DEPTH_STENCIL,   GL_UNSIGNED_INT_24_8, },
+	{ VI_FORMAT_D32F,     VI_IMAGE_ASPECT_DEPTH,         VK_FORMAT_D32_SFLOAT,          4,  GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT },
 };
 
 static inline void swrite32(uint8_t** mem, uint32_t value)
@@ -2027,7 +2029,10 @@ static void gl_create_framebuffer(VIOpenGL* gl, VIFramebuffer fb, const VIFrameb
 	if (info->depth_stencil_attachment)
 	{
 		VI_ASSERT(info->depth_stencil_attachment->info.usage & VI_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT /* TODO: Depth or Stencil only */, GL_TEXTURE_2D, info->depth_stencil_attachment->gl.handle, 0);
+
+		GLenum attachment_type;
+		cast_format_attachment_gl(info->depth_stencil_attachment->info.format, &attachment_type);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, attachment_type, GL_TEXTURE_2D, info->depth_stencil_attachment->gl.handle, 0);
 	}
 
 	GLenum status;
@@ -3263,7 +3268,6 @@ static void cast_format_vk(VkFormat in_format, VIFormat* out_format)
 	VI_UNREACHABLE;
 }
 
-
 static void cast_format_gl(VIFormat in_format, GLenum* out_internal_format, GLenum* out_data_format, GLenum* out_data_type, uint32_t* out_texel_size)
 {
 	const VIFormatEntry* entry = vi_format_table + (int)in_format;
@@ -3271,6 +3275,20 @@ static void cast_format_gl(VIFormat in_format, GLenum* out_internal_format, GLen
 	*out_data_format = entry->gl_data_format;
 	*out_data_type = entry->gl_data_type;
 	*out_texel_size = entry->texel_block_size;
+}
+
+static void cast_format_attachment_gl(VIFormat in_format, GLenum* out_attachment)
+{
+	VIImageAspectFlags aspect = (VIImageAspectFlags)vi_format_table[(int)in_format].vk_aspect;
+
+	if (aspect == VI_IMAGE_ASPECT_DEPTH_STENCIL)
+		*out_attachment = GL_DEPTH_STENCIL_ATTACHMENT;
+	else if (aspect == VI_IMAGE_ASPECT_DEPTH)
+		*out_attachment = GL_DEPTH_ATTACHMENT;
+	else if (aspect == VI_IMAGE_ASPECT_STENCIL)
+		*out_attachment = GL_STENCIL_ATTACHMENT;
+	else
+		VI_UNREACHABLE; // color attachment
 }
 
 static void cast_set_pool_resources(uint32_t in_res_count, const VISetPoolResource* in_res, std::vector<VkDescriptorPoolSize>& out_sizes)
