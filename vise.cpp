@@ -16,8 +16,10 @@
 #include <volk.h>
 #include <glad/glad.h>
 
-#ifndef VI_BUILD_RELEASE
+#if !defined(VI_BUILD_RELEASE) && !defined(NDEBUG)
 # define VI_BUILD_DEBUG
+#else
+# define VI_BUILD_RELEASE
 #endif
 
 #define VMA_IMPLEMENTATION

@@ -4,8 +4,9 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <tiny_gltf.h>
-#include "Model.h"
 #include "Application.h"
+#include "Common.h"
+#include "Model.h"
 
 MeshData::MeshData()
 	: VBO(VI_NULL)
@@ -333,6 +334,9 @@ void GLTFModel::DrawNode(VICommand cmd, GLTFNode* node)
 
 std::shared_ptr<GLTFModel> GLTFModel::LoadFromFile(const char* path, VIDevice device, VISetLayout materialSL)
 {
+	Timer timer;
+	timer.Start();
+
 	std::shared_ptr<GLTFModel> model = std::make_shared<GLTFModel>(device);
 	model->mMaterialSetLayout = materialSL;
 
@@ -351,6 +355,10 @@ std::shared_ptr<GLTFModel> GLTFModel::LoadFromFile(const char* path, VIDevice de
 		return nullptr;
 
 	model->Load(tinyModel);
+
+	timer.Stop();
+	std::cout << "loaded GLTF model " << path << " (" << timer.GetMilliSeconds() << " ms)" << std::endl;
+
 	return model;
 }
 
