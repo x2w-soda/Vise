@@ -70,3 +70,32 @@ const float* GetSkyboxVertices(uint32_t* vertexCount, uint32_t* byteSize, std::v
 
 	return vertices;
 }
+
+void Timer::Start()
+{
+	mStartTime = std::chrono::high_resolution_clock::now();
+	mIsRunning = true;
+}
+
+void Timer::Stop()
+{
+	mEndTime = std::chrono::high_resolution_clock::now();
+	mIsRunning = false;
+}
+
+double Timer::GetMilliSeconds()
+{
+	std::chrono::time_point<std::chrono::high_resolution_clock> endTime;
+
+	if (mIsRunning)
+		endTime = std::chrono::high_resolution_clock::now();
+	else
+		endTime = mEndTime;
+
+	return std::chrono::duration_cast<std::chrono::microseconds>(endTime - mStartTime).count() / 1000.0;
+}
+
+double Timer::GetSeconds()
+{
+	return GetMilliSeconds() / 1000.0;
+}
