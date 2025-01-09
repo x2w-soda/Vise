@@ -10,6 +10,9 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#define STR(A) STR_(A)
+#define STR_(A) #A
+
 const float* GetSkyboxVertices(uint32_t* vertexCount, uint32_t* byteSize,
 	std::vector<VIVertexAttribute>* attrs = nullptr, std::vector<VIVertexBinding>* bindings = nullptr);
 

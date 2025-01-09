@@ -8,9 +8,6 @@
 #include "../Application/Common.h"
 #include "../../Extern/stb/stb_image.h"
 
-#define STR(A) STR_(A)
-#define STR_(A) #A
-
 #define CUBEMAP_SIZE            1024
 #define BRDFLUT_SIZE            512
 #define BRDFLUT_SAMPLE_COUNT    1024

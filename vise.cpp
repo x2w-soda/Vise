@@ -979,6 +979,7 @@ struct VIFormatEntry
 
 static const VIFormatEntry vi_format_table[] = {
 	{ VI_FORMAT_UNDEFINED, (VIImageAspectFlags)0,        VK_FORMAT_UNDEFINED,           0,  GL_NONE,               GL_NONE,            GL_NONE },
+	{ VI_FORMAT_R8,       VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R8_UNORM,            1,  GL_R8,                 GL_RED,             GL_UNSIGNED_BYTE },
 	{ VI_FORMAT_RGBA8,    VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R8G8B8A8_UNORM,      4,  GL_RGBA8,              GL_RGBA,            GL_UNSIGNED_BYTE },
 	{ VI_FORMAT_BGRA8,    VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_B8G8R8A8_UNORM,      4,  GL_RGBA8,              GL_BGRA,            GL_UNSIGNED_BYTE },
 	{ VI_FORMAT_RG16F,    VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R16G16_SFLOAT,       4,  GL_RG16F,              GL_RG,              GL_HALF_FLOAT },
@@ -2549,24 +2550,33 @@ static void gl_cmd_execute_bind_set(VIDevice device, GLCommand* glcmd)
 		{
 		case VI_SET_BINDING_TYPE_UNIFORM_BUFFER:
 			buffer = (VIBuffer)set->gl.binding_sites[binding_idx];
-			VI_ASSERT(buffer && buffer->type == VI_BUFFER_TYPE_UNIFORM);
-			glBindBufferBase(GL_UNIFORM_BUFFER, remapped_binding, buffer->gl.handle);
+			if (buffer)
+			{
+				glBindBufferBase(GL_UNIFORM_BUFFER, remapped_binding, buffer->gl.handle);
+			}
 			break;
 		case VI_SET_BINDING_TYPE_STORAGE_BUFFER:
 			buffer = (VIBuffer)set->gl.binding_sites[binding_idx];
-			VI_ASSERT(buffer && buffer->type == VI_BUFFER_TYPE_STORAGE);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, remapped_binding, buffer->gl.handle);
+			if (buffer)
+			{
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, remapped_binding, buffer->gl.handle);
+			}
 			break;
 		case VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER:
 			image = (VIImage)set->gl.binding_sites[binding_idx];
-			VI_ASSERT(image && image->info.usage & VI_IMAGE_USAGE_SAMPLED_BIT);
-			glActiveTexture(GL_TEXTURE0 + remapped_binding);
-			glBindTexture(image->gl.target, image->gl.handle);
+			if (image)
+			{
+				glActiveTexture(GL_TEXTURE0 + remapped_binding);
+				glBindTexture(image->gl.target, image->gl.handle);
+			}
 			break;
 		case VI_SET_BINDING_TYPE_STORAGE_IMAGE:
 			image = (VIImage)set->gl.binding_sites[binding_idx];
-			cast_format_gl(image->info.format, &internal_format, &data_format, &data_type, &texel_size);
-			glBindImageTexture(remapped_binding, image->gl.handle, 0, GL_FALSE, 0, GL_READ_ONLY /* TODO: reflect SPIRV */, internal_format);
+			if (image)
+			{
+				cast_format_gl(image->info.format, &internal_format, &data_format, &data_type, &texel_size);
+				glBindImageTexture(remapped_binding, image->gl.handle, 0, GL_FALSE, 0, GL_READ_ONLY /* TODO: reflect SPIRV */, internal_format);
+			}
 			break;
 		default:
 			VI_UNREACHABLE;
