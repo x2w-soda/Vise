@@ -468,9 +468,9 @@ ExamplePBR::ExamplePBR(VIBackend backend)
 	uint32_t sceneSetCount = mFramesInFlight;
 
 	std::array<VISetPoolResource, 2> resources{};
-	resources[0].type = VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER;
+	resources[0].type = VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER;
 	resources[0].count = singleImageSetCount + sceneSetImageCount * mFramesInFlight;
-	resources[1].type = VI_SET_BINDING_TYPE_UNIFORM_BUFFER;
+	resources[1].type = VI_BINDING_TYPE_UNIFORM_BUFFER;
 	resources[1].count = sceneSetUBOCount * mFramesInFlight;
 
 	VISetPoolInfo setPoolI;
@@ -480,21 +480,21 @@ ExamplePBR::ExamplePBR(VIBackend backend)
 	mSetPool = vi_create_set_pool(mDevice, &setPoolI);
 
 	mSetLayoutSingleImage = CreateSetLayout(mDevice, {
-		{ VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 0, 1 },
+		{ VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 0, 1 },
 	});
 
 	mSetLayoutScene = CreateSetLayout(mDevice, {
-		{ VI_SET_BINDING_TYPE_UNIFORM_BUFFER,         0, 1 },
-		{ VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 1, 1 },
-		{ VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 2, 1 },
-		{ VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 3, 1 }
+		{ VI_BINDING_TYPE_UNIFORM_BUFFER,         0, 1 },
+		{ VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 1, 1 },
+		{ VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 2, 1 },
+		{ VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 3, 1 }
 	});
 
 	mSetLayoutMaterial = CreateSetLayout(mDevice, {
-		{ VI_SET_BINDING_TYPE_UNIFORM_BUFFER,         0, 1 },
-		{ VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 1, 1 },
-		{ VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 2, 1 },
-		{ VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 3, 1 }
+		{ VI_BINDING_TYPE_UNIFORM_BUFFER,         0, 1 },
+		{ VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 1, 1 },
+		{ VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 2, 1 },
+		{ VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 3, 1 }
 	});
 
 	VIPipelineLayoutInfo pipelineLayoutI;
@@ -680,7 +680,7 @@ ExamplePBR::ExamplePBR(VIBackend backend)
 	mFrames.resize(mFramesInFlight);
 	for (size_t i = 0; i < mFrames.size(); i++)
 	{
-		mFrames[i].cmd = vi_alloc_command(mDevice, mCmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+		mFrames[i].cmd = vi_allocate_primary_command(mDevice, mCmdPool);
 
 		VIBufferInfo bufferI;
 		bufferI.type = VI_BUFFER_TYPE_UNIFORM;
@@ -690,15 +690,15 @@ ExamplePBR::ExamplePBR(VIBackend backend)
 		mFrames[i].scene_ubo = vi_create_buffer(mDevice, &bufferI);
 		vi_buffer_map(mFrames[i].scene_ubo);
 
-		mFrames[i].scene_set = vi_alloc_set(mDevice, mSetPool, mSetLayoutScene);
+		mFrames[i].scene_set = vi_allocate_set(mDevice, mSetPool, mSetLayoutScene);
 		std::array<VISetUpdateInfo, 4> updates{};
-		updates[0].binding = 0;
+		updates[0].binding_index = 0;
 		updates[0].buffer = mFrames[i].scene_ubo;
-		updates[1].binding = 1;
+		updates[1].binding_index = 1;
 		updates[1].image = mBRDFLUT;
-		updates[2].binding = 2;
+		updates[2].binding_index = 2;
 		updates[2].image = mIrradiance;
-		updates[3].binding = 3;
+		updates[3].binding_index = 3;
 		updates[3].image = mPrefilter;
 		vi_set_update(mFrames[i].scene_set, updates.size(), updates.data());
 	}
@@ -1000,7 +1000,7 @@ void ExamplePBR::BakeCubemap(VIImage targetCubemap, uint32_t cubemapDim, VIPipel
 		glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f,  0.0f, -1.0f), glm::vec3(0.0f, -1.0f,  0.0f))
 	};
 
-	VICommand cmd = vi_alloc_command(mDevice, mCmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+	VICommand cmd = vi_allocate_primary_command(mDevice, mCmdPool);
 
 	vi_begin_command(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
@@ -1088,7 +1088,7 @@ void ExamplePBR::BakeCubemap(VIImage targetCubemap, uint32_t cubemapDim, VIPipel
 
 void ExamplePBR::BakeBRDFLUT()
 {
-	VICommand cmd = vi_alloc_command(mDevice, mCmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+	VICommand cmd = vi_allocate_primary_command(mDevice, mCmdPool);
 
 	vi_begin_command(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 

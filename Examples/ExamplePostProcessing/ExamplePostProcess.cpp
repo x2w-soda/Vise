@@ -122,8 +122,8 @@ ExamplePostProcess::ExamplePostProcess(VIBackend backend)
 	// layouts
 	{
 		mSetLayout = CreateSetLayout(mDevice, {
-			{ VI_SET_BINDING_TYPE_UNIFORM_BUFFER, 0, 1 },
-			{ VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 1, 1 },
+			{ VI_BINDING_TYPE_UNIFORM_BUFFER, 0, 1 },
+			{ VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 1, 1 },
 		});
 
 		mPipelineLayout = CreatePipelineLayout(mDevice, {
@@ -250,9 +250,9 @@ ExamplePostProcess::ExamplePostProcess(VIBackend backend)
 	mQuadIBO = CreateBufferStaged(mDevice, &iboI, indices);
 
 	std::array<VISetPoolResource, 2> resources;
-	resources[0].type = VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER;
+	resources[0].type = VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER;
 	resources[0].count = mFramesInFlight;
-	resources[1].type = VI_SET_BINDING_TYPE_UNIFORM_BUFFER;
+	resources[1].type = VI_BINDING_TYPE_UNIFORM_BUFFER;
 	resources[1].count = mFramesInFlight;
 
 	VISetPoolInfo poolI;
@@ -297,7 +297,7 @@ ExamplePostProcess::ExamplePostProcess(VIBackend backend)
 		fbI.pass = mSceneRenderPass;
 
 		mFrames[i].fbo = vi_create_framebuffer(mDevice, &fbI);
-		mFrames[i].cmd = vi_alloc_command(mDevice, mCmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+		mFrames[i].cmd = vi_allocate_primary_command(mDevice, mCmdPool);
 		mFrames[i].set = AllocAndUpdateSet(mDevice, mSetPool, mSetLayout, {
 			{ 0, mFrames[i].scene_ubo, VI_NULL },
 			{ 1, VI_NULL, mFrames[i].scene_image },

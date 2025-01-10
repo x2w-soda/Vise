@@ -21,7 +21,7 @@
 #define ARRAY_LEN(A) (sizeof(A) / sizeof(*(A)))
 
 // helper to reduce set layout creation verbosity
-VISetLayout CreateSetLayout(VIDevice device, const std::initializer_list<VISetBinding>& list);
+VISetLayout CreateSetLayout(VIDevice device, const std::initializer_list<VIBinding>& list);
 
 // helper to reduce set pool creation verbosity
 VISetPool CreateSetPool(VIDevice device, uint32_t max_sets, const std::initializer_list<VISetPoolResource>& list);

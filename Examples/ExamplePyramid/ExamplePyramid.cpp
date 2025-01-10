@@ -51,10 +51,10 @@ ExamplePyramid::ExamplePyramid(VIBackend backend)
 
 	// layouts
 	{
-		std::vector<VISetBinding> bindings(1);
+		std::vector<VIBinding> bindings(1);
 		bindings[0].array_count = 1;
-		bindings[0].type = VI_SET_BINDING_TYPE_UNIFORM_BUFFER;
-		bindings[0].idx = 0;
+		bindings[0].type = VI_BINDING_TYPE_UNIFORM_BUFFER;
+		bindings[0].binding_index = 0;
 
 		VISetLayoutInfo layout_info;
 		layout_info.bindings = bindings.data();
@@ -127,7 +127,7 @@ ExamplePyramid::ExamplePyramid(VIBackend backend)
 	mIBO = CreateBufferStaged(mDevice, &iboI, indices);
 
 	std::array<VISetPoolResource, 1> resources;
-	resources[0].type = VI_SET_BINDING_TYPE_UNIFORM_BUFFER;
+	resources[0].type = VI_BINDING_TYPE_UNIFORM_BUFFER;
 	resources[0].count = mFramesInFlight;
 
 	VISetPoolInfo poolI;
@@ -148,12 +148,12 @@ ExamplePyramid::ExamplePyramid(VIBackend backend)
 		uboI.type = VI_BUFFER_TYPE_UNIFORM;
 		uboI.usage = 0;
 		mFrames[i].ubo = vi_create_buffer(mDevice, &uboI);
-		mFrames[i].set = vi_alloc_set(mDevice, mSetPool, mSetLayout);
-		mFrames[i].cmd = vi_alloc_command(mDevice, mCmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+		mFrames[i].set = vi_allocate_set(mDevice, mSetPool, mSetLayout);
+		mFrames[i].cmd = vi_allocate_primary_command(mDevice, mCmdPool);
 		vi_buffer_map(mFrames[i].ubo);
 
 		VISetUpdateInfo updateI;
-		updateI.binding = 0;
+		updateI.binding_index = 0;
 		updateI.image = nullptr;
 		updateI.buffer = mFrames[i].ubo;
 		vi_set_update(mFrames[i].set, 1, &updateI);

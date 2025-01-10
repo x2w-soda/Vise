@@ -11,7 +11,7 @@
 
 Application* Application::sInstance = nullptr;
 
-VISetLayout CreateSetLayout(VIDevice device, const std::initializer_list<VISetBinding>& list)
+VISetLayout CreateSetLayout(VIDevice device, const std::initializer_list<VIBinding>& list)
 {
 	VISetLayoutInfo info;
 	info.binding_count = list.size();
@@ -134,7 +134,7 @@ VIModule CreateOrLoadModule(VIDevice device, VIBackend backend, VIPipelineLayout
 
 VISet AllocAndUpdateSet(VIDevice device, VISetPool pool, VISetLayout layout, const std::initializer_list<VISetUpdateInfo>& updates)
 {
-	VISet set = vi_alloc_set(device, pool, layout);
+	VISet set = vi_allocate_set(device, pool, layout);
 	vi_set_update(set, updates.size(), updates.begin());
 
 	return set;
@@ -292,7 +292,7 @@ VIBuffer CreateBufferStaged(VIDevice device, const VIBufferInfo* info, const voi
 
 	uint32_t family = vi_device_get_graphics_family_index(device);
 	VICommandPool pool = vi_create_command_pool(device, family, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
-	VICommand cmd = vi_alloc_command(device, pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+	VICommand cmd = vi_allocate_primary_command(device, pool);
 	vi_begin_command(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	{
 		VkBufferCopy region;
@@ -341,7 +341,7 @@ VIImage CreateImageStaged(VIDevice device, const VIImageInfo* info, const void* 
 
 	uint32_t family = vi_device_get_graphics_family_index(device);
 	VICommandPool pool = vi_create_command_pool(device, family, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
-	VICommand cmd = vi_alloc_command(device, pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+	VICommand cmd = vi_allocate_primary_command(device, pool);
 	vi_begin_command(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	{
 		CmdImageLayoutTransition(cmd, dstImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, info->layers);

@@ -740,9 +740,9 @@ void GLTFModel::AllocateSets()
 {
 	// Allocate Material Sets
 	std::array<VISetPoolResource, 2> resources{};
-	resources[0].type = VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER;
+	resources[0].type = VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER;
 	resources[0].count = 3 * mMaterials.size();
-	resources[1].type = VI_SET_BINDING_TYPE_UNIFORM_BUFFER;
+	resources[1].type = VI_BINDING_TYPE_UNIFORM_BUFFER;
 	resources[1].count = mMaterials.size();
 
 	VISetPoolInfo poolI;
@@ -753,7 +753,7 @@ void GLTFModel::AllocateSets()
 
 	for (GLTFMaterial& mat : mMaterials)
 	{
-		mat.Set = vi_alloc_set(mDevice, mSetPool, mMaterialSetLayout);
+		mat.Set = vi_allocate_set(mDevice, mSetPool, mMaterialSetLayout);
 		std::array<VISetUpdateInfo, 4> updates{};
 		updates[0] = { 0, mat.UBO, VI_NULL };
 		updates[1] = { 1, VI_NULL, mat.BaseColorTexture->Image };

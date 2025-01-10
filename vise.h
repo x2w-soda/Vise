@@ -72,12 +72,12 @@ enum VIModuleType
 	VI_MODULE_TYPE_COMPUTE,
 };
 
-enum VISetBindingType
+enum VIBindingType
 {
-	VI_SET_BINDING_TYPE_UNIFORM_BUFFER,
-	VI_SET_BINDING_TYPE_STORAGE_BUFFER,
-	VI_SET_BINDING_TYPE_STORAGE_IMAGE,
-	VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER,
+	VI_BINDING_TYPE_UNIFORM_BUFFER,
+	VI_BINDING_TYPE_STORAGE_BUFFER,
+	VI_BINDING_TYPE_STORAGE_IMAGE,
+	VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER,
 };
 
 enum VIGLSLType
@@ -276,16 +276,16 @@ struct VIBufferInfo
 	VkMemoryPropertyFlags properties;
 };
 
-struct VISetBinding
+struct VIBinding
 {
-	VISetBindingType type;
-	uint32_t idx;
+	VIBindingType type;
+	uint32_t binding_index;
 	uint32_t array_count;
 };
 
 struct VISetPoolResource
 {
-	VISetBindingType type;
+	VIBindingType type;
 	uint32_t count;
 };
 
@@ -299,12 +299,12 @@ struct VISetPoolInfo
 struct VISetLayoutInfo
 {
 	uint32_t binding_count;
-	const VISetBinding* bindings;
+	const VIBinding* bindings;
 };
 
 struct VISetUpdateInfo
 {
-	uint32_t binding;
+	uint32_t binding_index;
 	VIBuffer buffer = VI_NULL;
 	VIImage image = VI_NULL;
 };
@@ -528,7 +528,7 @@ VI_API VISetPool vi_create_set_pool(VIDevice device, const VISetPoolInfo* info);
 VI_API void vi_destroy_set_pool(VIDevice device, VISetPool pool);
 VI_API VISetLayout vi_create_set_layout(VIDevice device, const VISetLayoutInfo* info);
 VI_API void vi_destroy_set_layout(VIDevice device, VISetLayout layout);
-VI_API VISet vi_alloc_set(VIDevice device, VISetPool pool, VISetLayout layout);
+VI_API VISet vi_allocate_set(VIDevice device, VISetPool pool, VISetLayout layout);
 VI_API void vi_free_set(VIDevice device, VISet set);
 VI_API VIPipelineLayout vi_create_pipeline_layout(VIDevice device, const VIPipelineLayoutInfo* info);
 VI_API void vi_destroy_pipeline_layout(VIDevice device, VIPipelineLayout layout);
@@ -540,7 +540,7 @@ VI_API VIFramebuffer vi_create_framebuffer(VIDevice device, const VIFramebufferI
 VI_API void vi_destroy_framebuffer(VIDevice device, VIFramebuffer framebuffer);
 VI_API VICommandPool vi_create_command_pool(VIDevice device, uint32_t family_idx, VkCommandPoolCreateFlags flags);
 VI_API void vi_destroy_command_pool(VIDevice device, VICommandPool pool);
-VI_API VICommand vi_alloc_command(VIDevice device, VICommandPool pool, VkCommandBufferLevel level);
+VI_API VICommand vi_allocate_primary_command(VIDevice device, VICommandPool pool);
 VI_API void vi_free_command(VIDevice device, VICommand cmd);
 
 VI_API void vi_device_wait_idle(VIDevice device);
@@ -571,8 +571,6 @@ VI_API void vi_cmd_copy_buffer(VICommand cmd, VIBuffer src, VIBuffer dst, uint32
 VI_API void vi_cmd_copy_buffer_to_image(VICommand cmd, VIBuffer buffer, VIImage image, VkImageLayout layout, uint32_t region_count, const VkBufferImageCopy* regions);
 VI_API void vi_cmd_copy_image(VICommand cmd, VIImage src, VkImageLayout src_layout, VIImage dst, VkImageLayout dst_layout, uint32_t region_count, const VkImageCopy* regions);
 VI_API void vi_cmd_copy_image_to_buffer(VICommand cmd, VIImage image, VkImageLayout layout, VIBuffer buffer, uint32_t region_count, const VkBufferImageCopy* regions);
-// VI_API void vi_cmd_copy_color_attachment_to_buffer(VICommand cmd, VIFramebuffer framebuffer, VkImageLayout layout, uint32_t index, VIBuffer buffer);
-// VI_API void vi_cmd_copy_depth_stencil_attachment_to_buffer(VICommand cmd, VIFramebuffer framebuffer, VIBuffer buffer);
 VI_API void vi_cmd_begin_pass(VICommand cmd, const VIPassBeginInfo* info);
 VI_API void vi_cmd_end_pass(VICommand cmd);
 VI_API void vi_cmd_bind_graphics_pipeline(VICommand cmd, VIPipeline pipeline);
@@ -580,8 +578,8 @@ VI_API void vi_cmd_bind_compute_pipeline(VICommand cmd, VIComputePipeline pipeli
 VI_API void vi_cmd_dispatch(VICommand cmd, uint32_t workgroup_x, uint32_t workgroup_y, uint32_t workgroup_z);
 VI_API void vi_cmd_bind_vertex_buffers(VICommand cmd, uint32_t first_binding, uint32_t binding_count, VIBuffer* buffers);
 VI_API void vi_cmd_bind_index_buffer(VICommand cmd, VIBuffer buffer, VkIndexType index_type);
-VI_API void vi_cmd_bind_graphics_set(VICommand cmd, VIPipelineLayout layout, uint32_t set_idx, VISet set);
-VI_API void vi_cmd_bind_compute_set(VICommand cmd, VIPipelineLayout layout, uint32_t set_idx, VISet set);
+VI_API void vi_cmd_bind_graphics_set(VICommand cmd, VIPipelineLayout layout, uint32_t set_index, VISet set);
+VI_API void vi_cmd_bind_compute_set(VICommand cmd, VIPipelineLayout layout, uint32_t set_index, VISet set);
 VI_API void vi_cmd_push_constants(VICommand cmd, VIPipelineLayout layout, uint32_t offset, uint32_t size, const void* value);
 VI_API void vi_cmd_set_viewport(VICommand cmd, VkViewport viewport);
 VI_API void vi_cmd_set_scissor(VICommand cmd, VkRect2D scissor);

@@ -132,7 +132,7 @@ TestBuiltins::~TestBuiltins()
 void TestBuiltins::Run()
 {
 	// render to color attachment and copy the results to buffer
-	VICommand cmd = vi_alloc_command(mDevice, mCmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+	VICommand cmd = vi_allocate_primary_command(mDevice, mCmdPool);
 
 	vi_begin_command(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 

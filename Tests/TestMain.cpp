@@ -76,9 +76,9 @@ TestDriver::TestDriver(VIBackend backend)
 	: Application("Test Driver", backend, false)
 {
 	mMSESetLayout = CreateSetLayout(mDevice, {
-		{ VI_SET_BINDING_TYPE_STORAGE_BUFFER, 0, 1 },
-		{ VI_SET_BINDING_TYPE_STORAGE_IMAGE, 1, 1 },
-		{ VI_SET_BINDING_TYPE_STORAGE_IMAGE, 2, 1 },
+		{ VI_BINDING_TYPE_STORAGE_BUFFER, 0, 1 },
+		{ VI_BINDING_TYPE_STORAGE_IMAGE, 1, 1 },
+		{ VI_BINDING_TYPE_STORAGE_IMAGE, 2, 1 },
 	});
 	mMSEPipelineLayout = CreatePipelineLayout(mDevice, {
 		mMSESetLayout
@@ -117,9 +117,9 @@ void TestDriver::Run()
 
 	size_t mse_test_count = mTests.size();
 	VISetPoolResource resources[2];
-	resources[0].type = VI_SET_BINDING_TYPE_STORAGE_BUFFER;
+	resources[0].type = VI_BINDING_TYPE_STORAGE_BUFFER;
 	resources[0].count = mse_test_count;
-	resources[1].type = VI_SET_BINDING_TYPE_STORAGE_IMAGE;
+	resources[1].type = VI_BINDING_TYPE_STORAGE_IMAGE;
 	resources[1].count = mse_test_count * 2;
 	VISetPoolInfo poolI;
 	poolI.max_set_count = mse_test_count;
@@ -130,7 +130,7 @@ void TestDriver::Run()
 	for (MSETest& test : mTests)
 		test.Init(mDevice, mMSESetPool, mMSESetLayout);
 
-	VICommand cmd = vi_alloc_command(mDevice, mCommandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+	VICommand cmd = vi_allocate_primary_command(mDevice, mCommandPool);
 	vi_begin_command(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 	vi_cmd_bind_compute_pipeline(cmd, mMSEPipeline);
 	for (MSETest& test : mTests)
@@ -222,7 +222,7 @@ void TestDriver::MSETest::Init(VIDevice device, VISetPool set_pool, VISetLayout 
 	vi_buffer_map_write(WGPartialSum, 0, storage_size, storage_data.data());
 	vi_buffer_unmap(WGPartialSum);
 
-	MSESet = vi_alloc_set(device, set_pool, set_layout);
+	MSESet = vi_allocate_set(device, set_pool, set_layout);
 	std::array<VISetUpdateInfo, 3> set_updates;
 	set_updates[0] = { 0, WGPartialSum, VI_NULL };
 	set_updates[1] = { 1, VI_NULL, Image1 };
@@ -284,6 +284,7 @@ int main(int argc, char** argv)
 	// the MSE test driver can be done in either backend
 	// NOTE: without golden images, it is possible that both backends are incorrect but identical renders
 	TestDriver testDriver(VI_BACKEND_VULKAN);
+	testDriver.AddMSETest("offline_compile_vk.png", "offline_compile_gl.png");
 	testDriver.AddMSETest("glsl_builtins_vk.png", "glsl_builtins_gl.png");
 	testDriver.AddMSETest("transfer_vk.png", "transfer_gl.png");
 	testDriver.AddMSETest("push_constant_vk.png", "push_constant_gl.png");

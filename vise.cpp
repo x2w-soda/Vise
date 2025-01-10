@@ -283,7 +283,7 @@ struct VISetPoolObj : VIObject
 
 struct VISetLayoutObj : VIObject
 {
-	std::vector<VISetBinding> bindings;
+	std::vector<VIBinding> bindings;
 
 	union
 	{
@@ -296,7 +296,7 @@ struct VISetLayoutObj : VIObject
 
 struct GLRemap
 {
-	VISetBindingType type;
+	VIBindingType type;
 	int vk_set_binding; // set 1 binding 3 -> 103
 	int gl_binding;
 };
@@ -703,7 +703,7 @@ static int gl_device_flush_submission(VIDevice device);
 static void gl_create_module(VIDevice device, VIModule module, const VIModuleInfo* info);
 static void gl_destroy_module(VIDevice device, VIModule module);
 static void gl_create_pipeline_layout(VIDevice device, VIPipelineLayout layout, const VIPipelineLayoutInfo* info);
-static void gl_remap(std::vector<GLRemap>& remaps, uint32_t set_count, uint32_t* binding_counts, const VISetBinding** bindings);
+static void gl_remap(std::vector<GLRemap>& remaps, uint32_t set_count, uint32_t* binding_counts, const VIBinding** bindings);
 static void gl_destroy_pipeline_layout(VIDevice device, VIPipelineLayout layout);
 static void gl_create_pipeline(VIDevice device, VIPipeline pipeline, VIModule vm, VIModule fm);
 static void gl_destroy_pipeline(VIDevice device, VIPipeline pipeline);
@@ -722,7 +722,7 @@ static void gl_free_command(VIDevice device, VICommand cmd);
 static void gl_alloc_set(VIDevice device, VISet set);
 static void gl_free_set(VIDevice device, VISet set);
 static void gl_set_update(VISet set, uint32_t update_count, const VISetUpdateInfo* updates);
-static void gl_pipeline_layout_get_remapped_binding(VIPipelineLayout layout, uint32_t set_idx, uint32_t binding_idx, uint32_t* remapped_binding);
+static void gl_pipeline_layout_get_remapped_binding(VIPipelineLayout layout, uint32_t set_index, uint32_t binding_idx, uint32_t* remapped_binding);
 static void gl_copy_buffer(VIBuffer src, VIBuffer dst, uint32_t src_offset, uint32_t dst_offset, uint32_t size);
 static void gl_copy_buffer_to_image(VIBuffer buffer, VIImage image, uint32_t buffer_offset, const VkOffset3D& image_offset, const VkExtent3D& image_extent,
 	const VkImageSubresourceLayers& image_subresource);
@@ -782,8 +782,8 @@ static void cast_format_vk(VkFormat in_format, VIFormat* out_format);
 static void cast_format_gl(VIFormat in_format, GLenum* out_internal_format, GLenum* out_data_format, GLenum* out_data_type, uint32_t* out_texel_size);
 static void cast_format_attachment_gl(VIFormat in_format, GLenum* out_attachment);
 static void cast_set_pool_resources(uint32_t in_res_count, const VISetPoolResource* in_res, std::vector<VkDescriptorPoolSize>& out_sizes);
-static void cast_set_binding(const VISetBinding* in_binding, VkDescriptorSetLayoutBinding* out_binding);
-static void cast_set_binding_type(VISetBindingType in_type, VkDescriptorType* out_type);
+static void cast_binding(const VIBinding* in_binding, VkDescriptorSetLayoutBinding* out_binding);
+static void cast_binding_type(VIBindingType in_type, VkDescriptorType* out_type);
 static void cast_glsl_type_vk(VIGLSLType in_type, VkFormat* out_format);
 static void cast_glsl_type_gl(VIGLSLType in_type, GLint* out_component_count, GLenum* out_component_type);
 static void cast_glsl_type_spirv(const spirv_cross::SPIRType& in_type, VIGLSLType* out_type);
@@ -1790,7 +1790,7 @@ static void gl_create_pipeline_layout(VIDevice device, VIPipelineLayout layout, 
 {
 	uint32_t set_count = layout->set_layouts.size();
 	std::vector<uint32_t> binding_counts(set_count);
-	std::vector<const VISetBinding*> set_bindings(set_count);
+	std::vector<const VIBinding*> set_bindings(set_count);
 
 	for (uint32_t i = 0; i < set_count; i++)
 	{
@@ -1816,7 +1816,7 @@ static void gl_create_pipeline_layout(VIDevice device, VIPipelineLayout layout, 
 		layout->gl.remaps = nullptr;
 }
 
-static void gl_remap(std::vector<GLRemap>& remaps, uint32_t set_count, uint32_t* binding_counts, const VISetBinding** bindings)
+static void gl_remap(std::vector<GLRemap>& remaps, uint32_t set_count, uint32_t* binding_counts, const VIBinding** bindings)
 {
 	remaps.clear();
 
@@ -1829,21 +1829,21 @@ static void gl_remap(std::vector<GLRemap>& remaps, uint32_t set_count, uint32_t*
 
 		for (uint32_t i = 0; i < binding_count; i++)
 		{
-			const VISetBinding* binding = bindings[set_idx] + i;
+			const VIBinding* binding = bindings[set_idx] + i;
 			VI_ASSERT(binding->array_count == 1); // TODO: support array of bindings
 
 			GLRemap remap;
 			remap.type = binding->type;
-			remap.vk_set_binding = set_idx * 100 + binding->idx;
+			remap.vk_set_binding = set_idx * 100 + binding->binding_index;
 
 			switch (remap.type)
 			{
-			case VI_SET_BINDING_TYPE_STORAGE_BUFFER:
-			case VI_SET_BINDING_TYPE_UNIFORM_BUFFER:
+			case VI_BINDING_TYPE_STORAGE_BUFFER:
+			case VI_BINDING_TYPE_UNIFORM_BUFFER:
 				remap.gl_binding = buffer_remap_count++;
 				break;
-			case VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER:
-			case VI_SET_BINDING_TYPE_STORAGE_IMAGE:
+			case VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER:
+			case VI_BINDING_TYPE_STORAGE_IMAGE:
 				// layout (binding = N) uniform samplerX -> sample from texture unit N
 				// layout (binding = N) uniform image2D -> sample from image unit N
 				remap.gl_binding = image_remap_count++;
@@ -2122,17 +2122,17 @@ static void gl_set_update(VISet set, uint32_t update_count, const VISetUpdateInf
 {
 	for (uint32_t i = 0; i < update_count; i++)
 	{
-		uint32_t binding = updates[i].binding;
+		uint32_t binding = updates[i].binding_index;
 
 		switch (set->layout->bindings[binding].type)
 		{
-		case VI_SET_BINDING_TYPE_UNIFORM_BUFFER:
-		case VI_SET_BINDING_TYPE_STORAGE_BUFFER:
+		case VI_BINDING_TYPE_UNIFORM_BUFFER:
+		case VI_BINDING_TYPE_STORAGE_BUFFER:
 			VI_ASSERT(updates[i].buffer);
 			set->gl.binding_sites[binding] = (void*)updates[i].buffer;
 			break;
-		case VI_SET_BINDING_TYPE_STORAGE_IMAGE:
-		case VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER:
+		case VI_BINDING_TYPE_STORAGE_IMAGE:
+		case VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER:
 			VI_ASSERT(updates[i].image);
 			set->gl.binding_sites[binding] = (void*)updates[i].image;
 			break;
@@ -2143,13 +2143,13 @@ static void gl_set_update(VISet set, uint32_t update_count, const VISetUpdateInf
 }
 
 static void gl_pipeline_layout_get_remapped_binding(VIPipelineLayout layout,
-	uint32_t set_idx, uint32_t binding_idx, uint32_t* remapped_binding)
+	uint32_t set_index, uint32_t binding_idx, uint32_t* remapped_binding)
 {
 	for (uint32_t i = 0; i < layout->gl.remap_count; i++)
 	{
 		GLRemap* remap = layout->gl.remaps + i;
 
-		if (remap->vk_set_binding == set_idx * 100 + binding_idx)
+		if (remap->vk_set_binding == set_index * 100 + binding_idx)
 		{
 			*remapped_binding = remap->gl_binding;
 			return;
@@ -2548,21 +2548,21 @@ static void gl_cmd_execute_bind_set(VIDevice device, GLCommand* glcmd)
 
 		switch (set->layout->bindings[binding_idx].type)
 		{
-		case VI_SET_BINDING_TYPE_UNIFORM_BUFFER:
+		case VI_BINDING_TYPE_UNIFORM_BUFFER:
 			buffer = (VIBuffer)set->gl.binding_sites[binding_idx];
 			if (buffer)
 			{
 				glBindBufferBase(GL_UNIFORM_BUFFER, remapped_binding, buffer->gl.handle);
 			}
 			break;
-		case VI_SET_BINDING_TYPE_STORAGE_BUFFER:
+		case VI_BINDING_TYPE_STORAGE_BUFFER:
 			buffer = (VIBuffer)set->gl.binding_sites[binding_idx];
 			if (buffer)
 			{
 				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, remapped_binding, buffer->gl.handle);
 			}
 			break;
-		case VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER:
+		case VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER:
 			image = (VIImage)set->gl.binding_sites[binding_idx];
 			if (image)
 			{
@@ -2570,7 +2570,7 @@ static void gl_cmd_execute_bind_set(VIDevice device, GLCommand* glcmd)
 				glBindTexture(image->gl.target, image->gl.handle);
 			}
 			break;
-		case VI_SET_BINDING_TYPE_STORAGE_IMAGE:
+		case VI_BINDING_TYPE_STORAGE_IMAGE:
 			image = (VIImage)set->gl.binding_sites[binding_idx];
 			if (image)
 			{
@@ -3308,39 +3308,39 @@ static void cast_set_pool_resources(uint32_t in_res_count, const VISetPoolResour
 	for (uint32_t i = 0; i < in_res_count; i++)
 	{
 		VkDescriptorType vktype;
-		cast_set_binding_type(in_res[i].type, &vktype);
+		cast_binding_type(in_res[i].type, &vktype);
 
 		out_sizes[i].descriptorCount = in_res[i].count;
 		out_sizes[i].type = vktype;
 	}
 }
 
-static void cast_set_binding(const VISetBinding* in_binding, VkDescriptorSetLayoutBinding* out_binding)
+static void cast_binding(const VIBinding* in_binding, VkDescriptorSetLayoutBinding* out_binding)
 {
 	VkDescriptorType descriptor_type;
-	cast_set_binding_type(in_binding->type, &descriptor_type);
+	cast_binding_type(in_binding->type, &descriptor_type);
 
-	out_binding->binding = in_binding->idx;
+	out_binding->binding = in_binding->binding_index;
 	out_binding->descriptorCount = in_binding->array_count;
 	out_binding->descriptorType = descriptor_type;
 	out_binding->stageFlags = VK_SHADER_STAGE_ALL; // TODO:
 	out_binding->pImmutableSamplers = nullptr;
 }
 
-static void cast_set_binding_type(VISetBindingType in_type, VkDescriptorType* out_type)
+static void cast_binding_type(VIBindingType in_type, VkDescriptorType* out_type)
 {
 	switch (in_type)
 	{
-	case VI_SET_BINDING_TYPE_UNIFORM_BUFFER:
+	case VI_BINDING_TYPE_UNIFORM_BUFFER:
 		*out_type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 		break;
-	case VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER:
+	case VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER:
 		*out_type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		break;
-	case VI_SET_BINDING_TYPE_STORAGE_BUFFER:
+	case VI_BINDING_TYPE_STORAGE_BUFFER:
 		*out_type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 		break;
-	case VI_SET_BINDING_TYPE_STORAGE_IMAGE:
+	case VI_BINDING_TYPE_STORAGE_IMAGE:
 		*out_type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
 		break;
 	default:
@@ -3981,10 +3981,10 @@ void vi_set_update(VISet set, uint32_t update_count, const VISetUpdateInfo* upda
 
 	for (uint32_t i = 0; i < update_count; i++)
 	{
-		uint32_t binding_idx = updates[i].binding;
-		VISetBindingType binding_type = set->layout->bindings[binding_idx].type;
+		uint32_t binding_idx = updates[i].binding_index;
+		VIBindingType binding_type = set->layout->bindings[binding_idx].type;
 		VkDescriptorType descriptor_type;
-		cast_set_binding_type(binding_type, &descriptor_type);
+		cast_binding_type(binding_type, &descriptor_type);
 
 		VkWriteDescriptorSet write;
 		write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -4034,16 +4034,16 @@ void vi_set_update(VISet set, uint32_t update_count, const VISetUpdateInfo* upda
 	// only store pointers after vector sizes are determined
 	for (uint32_t i = 0; i < update_count; i++)
 	{
-		uint32_t binding_idx = updates[i].binding;
-		VISetBindingType binding_type = set->layout->bindings[binding_idx].type;
+		uint32_t binding_idx = updates[i].binding_index;
+		VIBindingType binding_type = set->layout->bindings[binding_idx].type;
 
-		if (binding_type == VI_SET_BINDING_TYPE_UNIFORM_BUFFER ||
-			binding_type == VI_SET_BINDING_TYPE_STORAGE_BUFFER)
+		if (binding_type == VI_BINDING_TYPE_UNIFORM_BUFFER ||
+			binding_type == VI_BINDING_TYPE_STORAGE_BUFFER)
 		{
 			writes[i].pBufferInfo = write_buffers.data() + write_buffer_idx++;
 		}
-		else if (binding_type == VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER ||
-			binding_type == VI_SET_BINDING_TYPE_STORAGE_IMAGE)
+		else if (binding_type == VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER ||
+			binding_type == VI_BINDING_TYPE_STORAGE_IMAGE)
 		{
 			writes[i].pImageInfo = write_images.data() + write_image_idx++;
 		}
@@ -4387,7 +4387,7 @@ VISetLayout vi_create_set_layout(VIDevice device, const VISetLayoutInfo* info)
 
 	for (uint32_t i = 0; i < info->binding_count; i++)
 	{
-		cast_set_binding(info->bindings + i, bindings.data() + i);
+		cast_binding(info->bindings + i, bindings.data() + i);
 	}
 
 	VkDescriptorSetLayoutCreateInfo layoutCI;
@@ -4451,7 +4451,7 @@ void vi_destroy_set_pool(VIDevice device, VISetPool pool)
 	vi_free(pool);
 }
 
-VISet vi_alloc_set(VIDevice device, VISetPool pool, VISetLayout layout)
+VISet vi_allocate_set(VIDevice device, VISetPool pool, VISetLayout layout)
 {
 	VISet set = (VISet)vi_malloc(sizeof(VISetObj));
 	new (set) VISetObj();
@@ -4874,7 +4874,7 @@ void vi_destroy_command_pool(VIDevice device, VICommandPool pool)
 	vi_free(pool);
 }
 
-VICommand vi_alloc_command(VIDevice device, VICommandPool pool, VkCommandBufferLevel level)
+VICommand vi_allocate_primary_command(VIDevice device, VICommandPool pool)
 {
 	VIVulkan* vk = &device->vk;
 	VICommand cmd = (VICommand)vi_malloc(sizeof(VICommandObj));
@@ -4888,7 +4888,7 @@ VICommand vi_alloc_command(VIDevice device, VICommandPool pool, VkCommandBufferL
 	}
 
 	cmd->pool = pool;
-	vk_alloc_cmd_buffer(vk, cmd, pool->vk_handle, level);
+	vk_alloc_cmd_buffer(vk, cmd, pool->vk_handle, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
 	return cmd;
 }
 
@@ -5617,12 +5617,12 @@ char* vi_compile_binary(VIDevice device, VIModuleType type, VIPipelineLayout lay
 	for (size_t i = 0; i < set_layout_count; i++)
 		binding_ctr += (uint32_t)layout->set_layouts[i]->bindings.size();
 
-	std::vector<VISetBinding> set_bindings(binding_ctr);
+	std::vector<VIBinding> set_bindings(binding_ctr);
 	binding_ctr = 0;
 
 	for (uint32_t i = 0; i < set_layout_count; i++)
 	{
-		const std::vector<VISetBinding>& bindings = layout->set_layouts[i]->bindings;
+		const std::vector<VIBinding>& bindings = layout->set_layouts[i]->bindings;
 		uint32_t binding_count = (uint32_t)bindings.size();
 
 		set_layouts[i].binding_count = binding_count;
@@ -5655,7 +5655,7 @@ char* vi_compile_binary_offline(VIBackend backend, VIModuleType type, const VIPi
 	{
 		uint32_t set_count = layout_data->set_layout_count;
 		std::vector<uint32_t> binding_counts(set_count);
-		std::vector<const VISetBinding*> set_bindings(set_count);
+		std::vector<const VIBinding*> set_bindings(set_count);
 
 		for (uint32_t i = 0; i < set_count; i++)
 		{

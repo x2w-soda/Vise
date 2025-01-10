@@ -53,11 +53,11 @@ TestTransfer::TestTransfer(VIBackend backend)
 	VISetLayoutInfo setLayoutI;
 	setLayoutI.binding_count = 1;
 	mSetLayout = CreateSetLayout(mDevice, {
-		{ VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 0, 1 },
+		{ VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 0, 1 },
 	});
 
 	mSetPool = CreateSetPool(mDevice, 2, {
-		{ VI_SET_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 2 },
+		{ VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 2 },
 	});
 
 	VIPipelineLayoutInfo pipelineLayoutI;
@@ -159,7 +159,7 @@ void TestTransfer::TestFullCopy()
 	VISet setImage2 = AllocAndUpdateSet(mDevice, mSetPool, mSetLayout, { {0, VI_NULL, image2 } });
 	VISet setImage3 = AllocAndUpdateSet(mDevice, mSetPool, mSetLayout, { {0, VI_NULL, image3 } });
 
-	VICommand cmd = vi_alloc_command(mDevice, mCmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+	VICommand cmd = vi_allocate_primary_command(mDevice, mCmdPool);
 	vi_begin_command(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
 	// TODO: this assumes transfer queue == graphics queue

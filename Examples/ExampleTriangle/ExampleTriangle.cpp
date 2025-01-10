@@ -96,7 +96,7 @@ ExampleTriangle::ExampleTriangle(VIBackend backend)
 	mCommands.resize(mFramesInFlight);
 	for (size_t i = 0; i < mFramesInFlight; i++)
 	{
-		mCommands[i] = vi_alloc_command(mDevice, mCmdPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+		mCommands[i] = vi_allocate_primary_command(mDevice, mCmdPool);
 	}
 
 	RecordCommands();
