@@ -980,8 +980,11 @@ struct VIFormatEntry
 static const VIFormatEntry vi_format_table[] = {
 	{ VI_FORMAT_UNDEFINED, (VIImageAspectFlags)0,        VK_FORMAT_UNDEFINED,           0,  GL_NONE,               GL_NONE,            GL_NONE },
 	{ VI_FORMAT_R8,       VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R8_UNORM,            1,  GL_R8,                 GL_RED,             GL_UNSIGNED_BYTE },
+	{ VI_FORMAT_RG8,      VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R8G8_UNORM,          2,  GL_RG8,                GL_RG,              GL_UNSIGNED_BYTE },
+	{ VI_FORMAT_RGB8,     VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R8G8B8_UNORM,        3,  GL_RGB8,               GL_RGB,             GL_UNSIGNED_BYTE },
 	{ VI_FORMAT_RGBA8,    VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R8G8B8A8_UNORM,      4,  GL_RGBA8,              GL_RGBA,            GL_UNSIGNED_BYTE },
 	{ VI_FORMAT_BGRA8,    VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_B8G8R8A8_UNORM,      4,  GL_RGBA8,              GL_BGRA,            GL_UNSIGNED_BYTE },
+	{ VI_FORMAT_R16F,     VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R16_SFLOAT,          2,  GL_R16F,               GL_RED,             GL_HALF_FLOAT },
 	{ VI_FORMAT_RG16F,    VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R16G16_SFLOAT,       4,  GL_RG16F,              GL_RG,              GL_HALF_FLOAT },
 	{ VI_FORMAT_RGB16F,   VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R16G16B16_SFLOAT,    6,  GL_RGB16F,             GL_RGB,             GL_HALF_FLOAT },
 	{ VI_FORMAT_RGBA16F,  VI_IMAGE_ASPECT_COLOR,         VK_FORMAT_R16G16B16A16_SFLOAT, 8,  GL_RGBA16F,            GL_RGBA,            GL_HALF_FLOAT },
