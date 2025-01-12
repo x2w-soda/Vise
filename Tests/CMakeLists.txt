@@ -2,6 +2,8 @@ add_executable(vise_tests
 	TestMain.cpp
 	TestApplication.h
 	TestApplication.cpp
+	TestOfflineCompile.h
+	TestOfflineCompile.cpp
 	TestPushConstants.h
 	TestPushConstants.cpp
 	TestBuiltins.h

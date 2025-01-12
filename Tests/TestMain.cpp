@@ -2,6 +2,7 @@
 #include <vise.h>
 #include <stb_image.h>
 #include <stb_image_write.h>
+#include "TestOfflineCompile.h"
 #include "TestBuiltins.h"
 #include "TestTransfer.h"
 #include "TestPushConstants.h"
@@ -240,6 +241,16 @@ void TestDriver::MSETest::Shutdown(VIDevice device)
 
 int main(int argc, char** argv)
 {
+	{
+		TestOfflineCompile test_offline_compile(VI_BACKEND_VULKAN);
+		test_offline_compile.Filename = "offline_compile_vk.png";
+		test_offline_compile.Run();
+	}
+	{
+		TestOfflineCompile test_offline_compile(VI_BACKEND_OPENGL);
+		test_offline_compile.Filename = "offline_compile_gl.png";
+		test_offline_compile.Run();
+	}
 	{
 		TestBuiltins test_builtins(VI_BACKEND_VULKAN);
 		test_builtins.Filename = "glsl_builtins_vk.png";
