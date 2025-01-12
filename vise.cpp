@@ -1830,7 +1830,6 @@ static void gl_remap(std::vector<GLRemap>& remaps, uint32_t set_count, uint32_t*
 		for (uint32_t i = 0; i < binding_count; i++)
 		{
 			const VIBinding* binding = bindings[set_idx] + i;
-			VI_ASSERT(binding->array_count == 1); // TODO: support array of bindings
 
 			GLRemap remap;
 			remap.type = binding->type;
@@ -1840,13 +1839,15 @@ static void gl_remap(std::vector<GLRemap>& remaps, uint32_t set_count, uint32_t*
 			{
 			case VI_BINDING_TYPE_STORAGE_BUFFER:
 			case VI_BINDING_TYPE_UNIFORM_BUFFER:
-				remap.gl_binding = buffer_remap_count++;
+				remap.gl_binding = buffer_remap_count;
+				buffer_remap_count += binding->array_count;
 				break;
 			case VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER:
 			case VI_BINDING_TYPE_STORAGE_IMAGE:
 				// layout (binding = N) uniform samplerX -> sample from texture unit N
 				// layout (binding = N) uniform image2D -> sample from image unit N
-				remap.gl_binding = image_remap_count++;
+				remap.gl_binding = image_remap_count;
+				image_remap_count += binding->array_count;
 				break;
 			default:
 				VI_UNREACHABLE;
@@ -1989,6 +1990,8 @@ static void gl_create_image(VIOpenGL* gl, VIImage image, const VIImageInfo* info
 
 	if (target == GL_TEXTURE_2D || target == GL_TEXTURE_CUBE_MAP)
 		glTexStorage2D(target, info->levels, internal_format, info->width, info->height);
+	else if (target == GL_TEXTURE_2D_ARRAY)
+		glTexStorage3D(target, info->levels, internal_format, info->width, info->height, info->layers);
 	else
 		VI_UNREACHABLE;
 
@@ -2200,8 +2203,10 @@ static void gl_copy_buffer_to_image(VIBuffer buffer, VIImage image, uint32_t buf
 	uint32_t texel_size;
 	GLenum internal_format, data_format, data_type;
 	cast_format_gl(image->info.format, &internal_format, &data_format, &data_type, &texel_size);
+	uint32_t layer_start = image_subresource.baseArrayLayer;
+	uint32_t layer_count = image_subresource.layerCount;
 	uint32_t layer_size = image_extent.width * image_extent.height * image_extent.depth * texel_size;
-	uint32_t access_size = layer_size * image_subresource.layerCount;
+	uint32_t access_size = layer_size * layer_count;
 
 	VI_ASSERT(buffer_offset + access_size <= buffer->size);
 
@@ -2224,11 +2229,16 @@ static void gl_copy_buffer_to_image(VIBuffer buffer, VIImage image, uint32_t buf
 		glBindTexture(GL_TEXTURE_2D, image->gl.handle);
 		glTexSubImage2D(GL_TEXTURE_2D, mip_level, image_offset.x, image_offset.y, image_extent.width, image_extent.height, data_format, data_type, data);
 	}
+	else if (image->info.type == VI_IMAGE_TYPE_2D_ARRAY)
+	{
+		glBindTexture(GL_TEXTURE_2D_ARRAY, image->gl.handle);
+		glTexSubImage3D(GL_TEXTURE_2D_ARRAY, mip_level, image_offset.x, image_offset.y, layer_start, image_extent.width, image_extent.height, layer_count, data_format, data_type, data);
+	}
 	else if (image->info.type == VI_IMAGE_TYPE_CUBE)
 	{
 		glBindTexture(GL_TEXTURE_CUBE_MAP, image->gl.handle);
 
-		for (uint32_t i = image_subresource.baseArrayLayer; i < image_subresource.layerCount; i++)
+		for (uint32_t i = layer_start; i < layer_count; i++)
 		{
 			uint8_t* face_data = (uint8_t*)data + layer_size * i;
 			glTexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, mip_level, image_offset.x, image_offset.y, image_extent.width, image_extent.height,data_format, data_type, face_data);
@@ -2243,37 +2253,40 @@ static void gl_copy_buffer_to_image(VIBuffer buffer, VIImage image, uint32_t buf
 static void gl_copy_image(VIImage src, VIImage dst, const VkOffset3D& src_offset, const VkOffset3D& dst_offset, const VkExtent3D& extent,
 	const VkImageSubresourceLayers& src_subresource, const VkImageSubresourceLayers& dst_subresource)
 {
+	VI_ASSERT(src->info.format == dst->info.format && "format aliasing not supported");
+
 	GLint src_mip_level = src_subresource.mipLevel;
 	GLint dst_mip_level = dst_subresource.mipLevel;
-	GLint src_layer = src_subresource.baseArrayLayer;
-	GLint dst_layer = dst_subresource.baseArrayLayer;
+	GLint src_layer_start = src_subresource.baseArrayLayer;
+	GLint src_layer_count = src_subresource.layerCount;
+	GLint src_offset_z = src_offset.z;
+	GLint src_depth = extent.depth;
+	GLint dst_layer_start = dst_subresource.baseArrayLayer;
+	GLint dst_layer_count = dst_subresource.layerCount;
+	GLint dst_offset_z = dst_offset.z;
 
-	VI_ASSERT(src->info.format == dst->info.format); // TODO: format compatability?
-	VI_ASSERT(src_subresource.layerCount == 1 && dst_subresource.layerCount == 1); // TODO: loop
+	VI_ASSERT(src_layer_count == 1 && dst_layer_count == 1); // TODO:
 
 	uint32_t texel_size;
 	GLenum internal_format, data_format, data_type;
 	cast_format_gl(src->info.format, &internal_format, &data_format, &data_type, &texel_size);
-	uint32_t layer_size = extent.width * extent.height * extent.depth * texel_size;
-	uint32_t access_size = layer_size * src_subresource.layerCount;
+	uint32_t access_size = extent.width * extent.height * extent.depth * texel_size;
 
-	if (src->info.type == VI_IMAGE_TYPE_2D && dst->info.type == VI_IMAGE_TYPE_2D)
+	// reinterpret Z axis as array layers if necessary
+	
+	if (src->info.type == VI_IMAGE_TYPE_CUBE || src->info.type == VI_IMAGE_TYPE_2D_ARRAY)
 	{
-		glCopyImageSubData(
-			src->gl.handle, src->gl.target, src_mip_level, src_offset.x, src_offset.y, src_offset.z,
-			dst->gl.handle, dst->gl.target, dst_mip_level, dst_offset.x, dst_offset.y, dst_offset.z,
-			extent.width, extent.height, extent.depth);
+		src_offset_z = src_layer_start;
+		src_depth = src_layer_count;
 	}
-	else if (src->info.type == VI_IMAGE_TYPE_2D && dst->info.type == VI_IMAGE_TYPE_CUBE)
-	{
-		uint8_t* data = (uint8_t*)vi_malloc(access_size);
-		glGetTextureSubImage(src->gl.handle, src_mip_level, src_offset.x, src_offset.y, 0, extent.width, extent.height, 1, data_format, data_type, access_size, data);
-		glBindTexture(GL_TEXTURE_CUBE_MAP, dst->gl.handle);
-		glTexSubImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + dst_layer, dst_mip_level, dst_offset.x, dst_offset.y, extent.width, extent.height, data_format, data_type, data);
-		vi_free(data);
-	}
-	else
-		VI_UNREACHABLE;
+
+	if (dst->info.type == VI_IMAGE_TYPE_CUBE || dst->info.type == VI_IMAGE_TYPE_2D_ARRAY)
+		dst_offset_z = dst_layer_start;
+
+	glCopyImageSubData(
+		src->gl.handle, src->gl.target, src_mip_level, src_offset.x, src_offset.y, src_offset_z,
+		dst->gl.handle, dst->gl.target, dst_mip_level, dst_offset.x, dst_offset.y, dst_offset_z,
+		extent.width, extent.height, src_depth);
 
 	GL_CHECK();
 }
@@ -2284,8 +2297,10 @@ static void gl_copy_image_to_buffer(VIImage image, VIBuffer buffer, uint32_t buf
 	uint32_t texel_size;
 	GLenum internal_format, data_format, data_type;
 	cast_format_gl(image->info.format, &internal_format, &data_format, &data_type, &texel_size);
+	uint32_t layer_start = image_subresource.baseArrayLayer;
+	uint32_t layer_count = image_subresource.layerCount;
 	uint32_t layer_size = image_extent.width * image_extent.height * image_extent.depth * texel_size;
-	uint32_t access_size = layer_size * image_subresource.layerCount;
+	uint32_t access_size = layer_size * layer_count;
 	
 	VI_ASSERT(buffer_offset + access_size <= buffer->size);
 
@@ -2299,11 +2314,9 @@ static void gl_copy_image_to_buffer(VIImage image, VIBuffer buffer, uint32_t buf
 	{
 		glGetTextureSubImage(image->gl.handle, mip_level, image_offset.x, image_offset.y, image_offset.z, image_extent.width, image_extent.height, image_extent.depth, data_format, data_type, access_size, data);
 	}
-	else if (image->info.type == VI_IMAGE_TYPE_CUBE)
+	else if (image->info.type == VI_IMAGE_TYPE_2D_ARRAY || image->info.type == VI_IMAGE_TYPE_CUBE)
 	{
-		uint32_t face_start = image_subresource.baseArrayLayer;
-		uint32_t face_count = image_subresource.layerCount;
-		glGetTextureSubImage(image->gl.handle, mip_level, image_offset.x, image_offset.y, face_start, image_extent.width, image_extent.height, face_count, data_format, data_type, access_size, data);
+		glGetTextureSubImage(image->gl.handle, mip_level, image_offset.x, image_offset.y, layer_start, image_extent.width, image_extent.height, layer_count, data_format, data_type, access_size, data);
 	}
 	else
 		VI_UNREACHABLE;
@@ -3982,6 +3995,7 @@ void vi_set_update(VISet set, uint32_t update_count, const VISetUpdateInfo* upda
 	for (uint32_t i = 0; i < update_count; i++)
 	{
 		uint32_t binding_idx = updates[i].binding_index;
+		uint32_t descriptor_count = 1;
 		VIBindingType binding_type = set->layout->bindings[binding_idx].type;
 		VkDescriptorType descriptor_type;
 		cast_binding_type(binding_type, &descriptor_type);
@@ -4286,8 +4300,13 @@ VIImage vi_create_image(VIDevice device, const VIImageInfo* info)
 	cast_image_usages(image->info.usage, &usage);
 	cast_image_type(image->info.type, &type, &view_type);
 
+	VkImageCreateFlags flags = 0;
+	if (info->type == VI_IMAGE_TYPE_CUBE)
+		flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+
 	VkImageCreateInfo imageCI{};
 	imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageCI.flags = flags;
 	imageCI.extent.width = info->width;
 	imageCI.extent.height = info->height;
 	imageCI.extent.depth = 1;
@@ -4300,8 +4319,6 @@ VIImage vi_create_image(VIDevice device, const VIImageInfo* info)
 	imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	imageCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
-	if (info->type == VI_IMAGE_TYPE_CUBE)
-		imageCI.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 	vk_create_image(vk, image, &imageCI, info->properties);
 
 	VkImageViewCreateInfo viewCI{};
