@@ -5,3 +5,4 @@ Examples/ExampleTextureArray
 Examples/ExampleTextureSampling
 Examples/ExampleTextureCubemap
 Examples/ExampleDeferred
+Examples/ExampleSSR
