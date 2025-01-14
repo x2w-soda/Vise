@@ -704,7 +704,8 @@ void ExampleSSAO::Run()
 			uint32_t use_normal_map = (uint32_t)mConfig.use_normal_map;
 			vi_cmd_push_constants(cmd, mPipelineLayoutUCCC2, sizeof(glm::mat4), sizeof(use_normal_map), &use_normal_map);
 
-			mSceneModel->Draw(cmd, mPipelineLayoutUCCC2);
+			uint32_t materialSetIndex = 1;
+			mSceneModel->Draw(cmd, mPipelineLayoutUCCC2, materialSetIndex);
 		}
 		vi_cmd_end_pass(cmd);
 

@@ -291,13 +291,14 @@ GLTFModel::~GLTFModel()
 	mEmptyTexture.Image = VI_NULL;
 }
 
-void GLTFModel::Draw(VICommand cmd, VIPipelineLayout layout)
+void GLTFModel::Draw(VICommand cmd, VIPipelineLayout layout, uint32_t materialSetIndex)
 {
 	vi_cmd_bind_vertex_buffers(cmd, 0, 1, &mVBO);
 	vi_cmd_bind_index_buffer(cmd, mIBO, VK_INDEX_TYPE_UINT32);
 
 	mDrawMaterial = nullptr;
 	mDrawPipelineLayout = layout;
+	mMaterialSetIndex = materialSetIndex;
 
 	for (GLTFNode* node : mRootNodes)
 		DrawNode(cmd, node);
@@ -314,7 +315,7 @@ void GLTFModel::DrawNode(VICommand cmd, GLTFNode* node)
 			if (mDrawMaterial != prim.Material)
 			{
 				mDrawMaterial = prim.Material;
-				vi_cmd_bind_graphics_set(cmd, mDrawPipelineLayout, 1, prim.Material->Set);
+				vi_cmd_bind_graphics_set(cmd, mDrawPipelineLayout, mMaterialSetIndex, prim.Material->Set);
 			}
 
 			glm::mat4 transform = node->Transform;

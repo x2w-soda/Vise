@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <array>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
@@ -152,6 +153,20 @@ struct GLTFMaterial
 		int Occlusion;
 		int MetallicRoughness;
 	} TexCoordSet;
+
+	static VISetLayout CreateSetLayout(VIDevice device)
+	{
+		std::array<VIBinding, 4> bindings;
+		bindings[0] = { VI_BINDING_TYPE_UNIFORM_BUFFER, 0, 1 };
+		bindings[1] = { VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 1, 1 };
+		bindings[2] = { VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 2, 1 };
+		bindings[3] = { VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 3, 1 };
+
+		VISetLayoutInfo setLI;
+		setLI.binding_count = bindings.size();
+		setLI.bindings = bindings.data();
+		return vi_create_set_layout(device, &setLI);
+	}
 };
 
 struct GLTFNode
@@ -193,7 +208,7 @@ public:
 
 	GLTFModel& operator=(const GLTFModel&) = delete;
 
-	void Draw(VICommand cmd, VIPipelineLayout layout);
+	void Draw(VICommand cmd, VIPipelineLayout layout, uint32_t materialSetIndex);
 
 	static std::shared_ptr<GLTFModel> LoadFromFile(const char* path, VIDevice device, VISetLayout materialSL);
 
@@ -212,6 +227,7 @@ private:
 	uint32_t mVertexBase;
 	uint32_t mIndexCount;
 	uint32_t mIndexBase;
+	uint32_t mMaterialSetIndex;
 	VIDevice mDevice;
 	VISetLayout mMaterialSetLayout;
 	VIBuffer mVBO = VI_NULL;

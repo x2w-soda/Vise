@@ -1,4 +1,5 @@
 #include <array>
+#include <iostream>
 #include <vector>
 #include <imgui.h>
 #include <glm/mat4x4.hpp>
@@ -490,12 +491,7 @@ ExamplePBR::ExamplePBR(VIBackend backend)
 		{ VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 3, 1 }
 	});
 
-	mSetLayoutMaterial = CreateSetLayout(mDevice, {
-		{ VI_BINDING_TYPE_UNIFORM_BUFFER,         0, 1 },
-		{ VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 1, 1 },
-		{ VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 2, 1 },
-		{ VI_BINDING_TYPE_COMBINED_IMAGE_SAMPLER, 3, 1 }
-	});
+	mSetLayoutMaterial = GLTFMaterial::CreateSetLayout(mDevice);
 
 	VIPipelineLayoutInfo pipelineLayoutI;
 	pipelineLayoutI.push_constant_size = 128;
@@ -855,8 +851,9 @@ void ExamplePBR::Run()
 			{
 				vi_cmd_bind_graphics_set(frame->cmd, mPipelineLayoutPBR, 0, frame->scene_set);
 
-				mModel->Draw(frame->cmd, mPipelineLayoutPBR);
-				mLogoModel->Draw(frame->cmd, mPipelineLayoutPBR);
+				uint32_t materialSetIndex = 1;
+				mModel->Draw(frame->cmd, mPipelineLayoutPBR, materialSetIndex);
+				mLogoModel->Draw(frame->cmd, mPipelineLayoutPBR, materialSetIndex);
 			}
 
 			Application::ImGuiRender(frame->cmd);
@@ -965,6 +962,9 @@ void ExamplePBR::ImGuiUpdate()
 
 void ExamplePBR::Bake()
 {
+	Timer timer;
+	timer.Start();
+
 	constexpr int max_mip_levels = PREFILTER_MIP_LEVELS;
 	std::array<CubemapPushConstant, max_mip_levels> constants;
 	
@@ -986,6 +986,9 @@ void ExamplePBR::Bake()
 
 	// render BRDF response into lookup table
 	BakeBRDFLUT();
+
+	timer.Stop();
+	std::cout << "baked images (" << timer.GetMilliSeconds() << " ms)" << std::endl;
 }
 
 void ExamplePBR::BakeCubemap(VIImage targetCubemap, uint32_t cubemapDim, VIPipeline pipeline, VIPipelineLayout layout,
