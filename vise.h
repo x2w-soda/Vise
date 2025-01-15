@@ -381,11 +381,32 @@ enum VICompareOp
 	VI_COMPARE_OP_ALWAYS,
 };
 
+enum VIStencilOp
+{
+	VI_STENCIL_OP_KEEP,
+	VI_STENCIL_OP_ZERO,
+	VI_STENCIL_OP_REPLACE,
+};
+
+struct VIStencilOpStateInfo
+{
+	VIStencilOp fail_op;
+	VIStencilOp pass_op;
+	VIStencilOp depth_fail_op;
+	VICompareOp compare_op;
+	uint32_t compare_mask;
+	uint32_t write_mask;
+	uint32_t reference;
+};
+
 struct VIPipelineDepthStencilStateInfo
 {
 	bool depth_test_enabled = true;
 	bool depth_write_enabled = true;
 	VICompareOp depth_compare_op = VI_COMPARE_OP_LESS;
+	bool stencil_test_enabled = false;
+	VIStencilOpStateInfo stencil_front;
+	VIStencilOpStateInfo stencil_back;
 };
 
 struct VIPipelineInfo

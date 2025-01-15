@@ -777,6 +777,9 @@ static void cast_blend_factor_vk(VIBlendFactor in_factor, VkBlendFactor* out_fac
 static void cast_blend_factor_gl(VIBlendFactor in_factor, GLenum* out_factor);
 static void cast_blend_op_vk(VIBlendOp in_op, VkBlendOp* out_op);
 static void cast_blend_op_gl(VIBlendOp in_op, GLenum* out_op);
+static void cast_stencil_op_vk(VIStencilOp in_op, VkStencilOp* out_op);
+static void cast_stencil_op_gl(VIStencilOp in_op, GLenum* out_op);
+static void cast_stencil_op_state_vk(const VIStencilOpStateInfo& in_state, VkStencilOpState* out_state);
 static void cast_format_vk(VIFormat in_format, VkFormat* out_format, VkImageAspectFlags* out_aspects);
 static void cast_format_vk(VkFormat in_format, VIFormat* out_format);
 static void cast_format_gl(VIFormat in_format, GLenum* out_internal_format, GLenum* out_data_format, GLenum* out_data_type, uint32_t* out_texel_size);
@@ -942,6 +945,19 @@ static const VIBlendOpEntry vi_blend_op_table[5] = {
 	{ VI_BLEND_OP_REVERSE_SUBTRACT, VK_BLEND_OP_REVERSE_SUBTRACT, GL_FUNC_REVERSE_SUBTRACT },
 	{ VI_BLEND_OP_MIN,              VK_BLEND_OP_MIN,              GL_MIN },
 	{ VI_BLEND_OP_MAX,              VK_BLEND_OP_MAX,              GL_MAX },
+};
+
+struct VIStencilOpEntry
+{
+	VIStencilOp vi_stencil_op;
+	VkStencilOp vk_stencil_op;
+	GLenum gl_stencil_op;
+};
+
+static const VIStencilOpEntry vi_stencil_op_table[] = {
+	{ VI_STENCIL_OP_KEEP,     VK_STENCIL_OP_KEEP,    GL_KEEP },
+	{ VI_STENCIL_OP_ZERO,     VK_STENCIL_OP_ZERO,    GL_ZERO },
+	{ VI_STENCIL_OP_REPLACE,  VK_STENCIL_OP_REPLACE, GL_REPLACE },
 };
 
 struct VIImageTypeEntry
@@ -1417,7 +1433,7 @@ static void vk_create_swapchain(VIVulkan* vk, const VISwapchainInfo* info, uint3
 
 			viewCI.image = vk->swapchain.depth_stencils[i].vk.handle;
 			viewCI.format = vk->swapchain.depth_stencil_format;
-			viewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT; // TODO: stencil?
+			viewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT; // TODO: only if there are stencil bits
 			vk_create_image_view(vk, vk->swapchain.depth_stencils.data() + i, &viewCI);
 		}
 		
@@ -2616,27 +2632,53 @@ static void gl_cmd_execute_bind_pipeline(VIDevice device, GLCommand* glcmd)
 	if (active_vm->gl.push_constant_count == 0 && active_fm->gl.push_constant_count > 0)
 		device->gl.active_module = active_fm;
 
-	// TODO:
+	// TODO: rasterization state
 	glEnable(GL_CULL_FACE);
-	glEnable(GL_DEPTH_TEST);
 	glFrontFace(GL_CCW);
 	glCullFace(GL_BACK);
 
 	glBindVertexArray(glcmd->bind_pipeline->gl.vao);
 	glUseProgram(glcmd->bind_pipeline->gl.program);
 
+	const VIPipelineDepthStencilStateInfo* dsI = &pipeline->depth_stencil_state;
+
 	// depth stencil states
-	if (pipeline->depth_stencil_state.depth_test_enabled)
+	if (dsI->depth_test_enabled)
 	{
 		GLenum depthCompareOp;
-		cast_compare_op_gl(pipeline->depth_stencil_state.depth_compare_op, &depthCompareOp);
+		cast_compare_op_gl(dsI->depth_compare_op, &depthCompareOp);
 
 		glEnable(GL_DEPTH_TEST);
 		glDepthFunc(depthCompareOp);
-		glDepthMask(pipeline->depth_stencil_state.depth_write_enabled);
+		glDepthMask(dsI->depth_write_enabled);
 	}
 	else
 		glDisable(GL_DEPTH_TEST);
+
+	if (dsI->stencil_test_enabled)
+	{
+		GLenum front_stencil_func, front_sfail, front_dpfail, front_dppass;
+		cast_compare_op_gl(dsI->stencil_front.compare_op, &front_stencil_func);
+		cast_stencil_op_gl(dsI->stencil_front.fail_op, &front_sfail);
+		cast_stencil_op_gl(dsI->stencil_front.depth_fail_op, &front_dpfail);
+		cast_stencil_op_gl(dsI->stencil_front.pass_op, &front_dppass);
+
+		GLenum back_stencil_func, back_sfail, back_dpfail, back_dppass;
+		cast_compare_op_gl(dsI->stencil_back.compare_op, &back_stencil_func);
+		cast_stencil_op_gl(dsI->stencil_back.fail_op, &back_sfail);
+		cast_stencil_op_gl(dsI->stencil_back.depth_fail_op, &back_dpfail);
+		cast_stencil_op_gl(dsI->stencil_back.pass_op, &back_dppass);
+
+		glEnable(GL_STENCIL_TEST);
+		glStencilOpSeparate(GL_FRONT, front_sfail, front_dpfail, front_dppass);
+		glStencilFuncSeparate(GL_FRONT, front_stencil_func, dsI->stencil_front.reference, dsI->stencil_front.compare_mask);
+		glStencilMaskSeparate(GL_FRONT, dsI->stencil_front.write_mask);
+		glStencilOpSeparate(GL_BACK, back_sfail, back_dpfail, back_dppass);
+		glStencilFuncSeparate(GL_BACK, back_stencil_func, dsI->stencil_back.reference, dsI->stencil_back.compare_mask);
+		glStencilMaskSeparate(GL_BACK, dsI->stencil_back.write_mask);
+	}
+	else
+		glDisable(GL_STENCIL_TEST);
 
 	// blend states
 	if (pipeline->blend_state.enabled)
@@ -2731,12 +2773,15 @@ static void gl_cmd_execute_begin_pass(VIDevice device, GLCommand* glcmd)
 		GLfloat depth = (GLfloat)depth_stencil_clear_value.value().depthStencil.depth; // TODO: paraphrase this unholy mess
 		glClearDepth(depth);
 
+		GLfloat stencil = (GLfloat)depth_stencil_clear_value.value().depthStencil.stencil; // TODO: only if there are stencil bits
+		glClearStencil(stencil);
+
 		GLfloat r = (GLfloat)color_clear_values[0].color.float32[0];
 		GLfloat g = (GLfloat)color_clear_values[0].color.float32[1];
 		GLfloat b = (GLfloat)color_clear_values[0].color.float32[2];
 		GLfloat a = (GLfloat)color_clear_values[0].color.float32[3];
 		glClearColor(r, g, b, a);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);// TODO: only if there are stencil bits
 
 		return;
 	}
@@ -2763,7 +2808,7 @@ static void gl_cmd_execute_begin_pass(VIDevice device, GLCommand* glcmd)
 		VkClearValue clear_value = depth_stencil_clear_value.value();
 		glClearDepthf(clear_value.depthStencil.depth);
 		clear_bits |= GL_DEPTH_BUFFER_BIT;
-		// TODO: GL_STENCIL_BUFFER_BIT;
+		clear_bits |= GL_STENCIL_BUFFER_BIT; // TODO: only if there are stencil bits
 	}
 
 	glClear(clear_bits);
@@ -3272,6 +3317,27 @@ static void cast_blend_op_gl(VIBlendOp in_op, GLenum* out_op)
 	*out_op = vi_blend_op_table[(int)in_op].gl_blend_op;
 }
 
+static void cast_stencil_op_vk(VIStencilOp in_op, VkStencilOp* out_op)
+{
+	*out_op = vi_stencil_op_table[(int)in_op].vk_stencil_op;
+}
+
+static void cast_stencil_op_gl(VIStencilOp in_op, GLenum* out_op)
+{
+	*out_op = vi_stencil_op_table[(int)in_op].gl_stencil_op;
+}
+
+static void cast_stencil_op_state_vk(const VIStencilOpStateInfo& in_state, VkStencilOpState* out_state)
+{
+	cast_stencil_op_vk(in_state.pass_op, &out_state->passOp);
+	cast_stencil_op_vk(in_state.fail_op, &out_state->failOp);
+	cast_stencil_op_vk(in_state.depth_fail_op, &out_state->depthFailOp);
+	cast_compare_op_vk(in_state.compare_op, &out_state->compareOp);
+	out_state->compareMask = in_state.compare_mask;
+	out_state->writeMask = in_state.write_mask;
+	out_state->reference = in_state.reference;
+}
+
 static void cast_format_vk(VIFormat in_format, VkFormat* out_format, VkImageAspectFlags* out_aspects)
 {
 	const VIFormatEntry* entry = vi_format_table + (int)in_format;
@@ -3666,20 +3732,28 @@ VIDevice vi_create_device_vk(const VIDeviceInfo* info, VIDeviceLimits* limits)
 			depth_stencil_atch.depth_stencil_format = vi_depth_stencil_format;
 			depth_stencil_atch.depth_load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
 			depth_stencil_atch.depth_store_op = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-			depth_stencil_atch.stencil_load_op = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			depth_stencil_atch.stencil_load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
 			depth_stencil_atch.stencil_store_op = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 			depth_stencil_atch.initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
 			depth_stencil_atch.final_layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL; // TODO: DEPTH_ATTACHMENT_OPTIMAL
 		}
 
-		VkSubpassDependency dependency;
-		dependency.dependencyFlags = 0;
-		dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-		dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-		dependency.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-		dependency.dstSubpass = 0;
-		dependency.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-		dependency.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+		std::array<VkSubpassDependency, 2> dependencies;
+		dependencies[0].dependencyFlags = 0;
+		dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+		dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		dependencies[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		dependencies[0].dstSubpass = 0;
+		dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+		dependencies[1].dependencyFlags = 0;
+		dependencies[1].srcSubpass = VK_SUBPASS_EXTERNAL;
+		dependencies[1].srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+		dependencies[1].srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		dependencies[1].dstSubpass = 0;
+		dependencies[1].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+		dependencies[1].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
 		VISubpassColorAttachment color_atch_ref;
 		color_atch_ref.index = 0;
@@ -3696,8 +3770,8 @@ VIDevice vi_create_device_vk(const VIDeviceInfo* info, VIDeviceLimits* limits)
 		VIPassInfo passI;
 		passI.color_attachment_count = 1;
 		passI.color_attachments = &color_atch;
-		passI.depenency_count = 1;
-		passI.dependencies = &dependency;
+		passI.depenency_count = dependencies.size();
+		passI.dependencies = dependencies.data();
 		passI.depth_stencil_attachment = has_depth_stencil_atch ? &depth_stencil_atch : nullptr;
 		passI.subpass_count = 1;
 		passI.subpasses = &subpassI;
@@ -4717,11 +4791,14 @@ VIPipeline vi_create_pipeline(VIDevice device, const VIPipelineInfo* info)
 	depthStencilStateCI.depthWriteEnable = info->depth_stencil_state.depth_write_enabled;
 	depthStencilStateCI.depthCompareOp = depth_compare_op;
 	depthStencilStateCI.depthBoundsTestEnable = VK_FALSE;
-	depthStencilStateCI.minDepthBounds = 0.0f; // Optional
-	depthStencilStateCI.maxDepthBounds = 1.0f; // Optional
-	depthStencilStateCI.stencilTestEnable = VK_FALSE;
-	depthStencilStateCI.front = {}; // Optional
-	depthStencilStateCI.back = {}; // Optional
+	depthStencilStateCI.minDepthBounds = 0.0f;
+	depthStencilStateCI.maxDepthBounds = 1.0f;
+	depthStencilStateCI.stencilTestEnable = info->depth_stencil_state.stencil_test_enabled;
+	if (depthStencilStateCI.stencilTestEnable)
+	{
+		cast_stencil_op_state_vk(info->depth_stencil_state.stencil_front, &depthStencilStateCI.front);
+		cast_stencil_op_state_vk(info->depth_stencil_state.stencil_back, &depthStencilStateCI.back);
+	}
 
 	VkGraphicsPipelineCreateInfo pipelineCI{};
 	pipelineCI.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
