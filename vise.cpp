@@ -361,6 +361,7 @@ struct VIPipelineObj : VIObject
 	VIPipelineLayout layout;
 	VIPipelineBlendStateInfo blend_state;
 	VIPipelineDepthStencilStateInfo depth_stencil_state;
+	VIPipelineRasterizationStateInfo rasterization_state;
 	VIModule vertex_module;
 	VIModule fragment_module;
 
@@ -779,6 +780,10 @@ static void cast_blend_op_vk(VIBlendOp in_op, VkBlendOp* out_op);
 static void cast_blend_op_gl(VIBlendOp in_op, GLenum* out_op);
 static void cast_stencil_op_vk(VIStencilOp in_op, VkStencilOp* out_op);
 static void cast_stencil_op_gl(VIStencilOp in_op, GLenum* out_op);
+static void cast_polygon_mode_vk(VIPolygonMode in_mode, VkPolygonMode* out_mode);
+static void cast_polygon_mode_gl(VIPolygonMode in_mode, GLenum* out_mode);
+static void cast_cull_mode_vk(VICullMode in_mode, VkCullModeFlags* out_mode);
+static void cast_cull_mode_gl(VICullMode in_mode, GLenum* out_mode);
 static void cast_stencil_op_state_vk(const VIStencilOpStateInfo& in_state, VkStencilOpState* out_state);
 static void cast_format_vk(VIFormat in_format, VkFormat* out_format, VkImageAspectFlags* out_aspects);
 static void cast_format_vk(VkFormat in_format, VIFormat* out_format);
@@ -958,6 +963,33 @@ static const VIStencilOpEntry vi_stencil_op_table[] = {
 	{ VI_STENCIL_OP_KEEP,     VK_STENCIL_OP_KEEP,    GL_KEEP },
 	{ VI_STENCIL_OP_ZERO,     VK_STENCIL_OP_ZERO,    GL_ZERO },
 	{ VI_STENCIL_OP_REPLACE,  VK_STENCIL_OP_REPLACE, GL_REPLACE },
+};
+
+struct VIPolygonModeEntry
+{
+	VIPolygonMode vi_polygon_mode;
+	VkPolygonMode vk_polygon_mode;
+	GLenum gl_polygon_mode;
+};
+
+static const VIPolygonModeEntry vi_polygon_mode_table[] = {
+	{ VI_POLYGON_MODE_FILL,  VK_POLYGON_MODE_FILL,  GL_FILL },
+	{ VI_POLYGON_MODE_LINE,  VK_POLYGON_MODE_LINE,  GL_LINE },
+	{ VI_POLYGON_MODE_POINT, VK_POLYGON_MODE_POINT, GL_POINT },
+};
+
+struct VICullModeEntry
+{
+	VICullMode vi_cull_mode;
+	VkCullModeFlags vk_cull_mode;
+	GLenum gl_cull_mode;
+};
+
+static const VICullModeEntry vi_cull_mode_table[] = {
+	{ VI_CULL_MODE_NONE,           VK_CULL_MODE_NONE,           (GLenum)0 }, // GL_NONE is not valid for glCullFace, we should disable GL_CULL_FACE
+	{ VI_CULL_MODE_BACK,           VK_CULL_MODE_BACK_BIT,       GL_BACK },
+	{ VI_CULL_MODE_FRONT,          VK_CULL_MODE_FRONT_BIT,      GL_FRONT },
+	{ VI_CULL_MODE_FRONT_AND_BACK, VK_CULL_MODE_FRONT_AND_BACK, GL_FRONT_AND_BACK },
 };
 
 struct VIImageTypeEntry
@@ -2632,13 +2664,27 @@ static void gl_cmd_execute_bind_pipeline(VIDevice device, GLCommand* glcmd)
 	if (active_vm->gl.push_constant_count == 0 && active_fm->gl.push_constant_count > 0)
 		device->gl.active_module = active_fm;
 
-	// TODO: rasterization state
-	glEnable(GL_CULL_FACE);
-	glFrontFace(GL_CCW);
-	glCullFace(GL_BACK);
-
 	glBindVertexArray(glcmd->bind_pipeline->gl.vao);
 	glUseProgram(glcmd->bind_pipeline->gl.program);
+
+	const VIPipelineRasterizationStateInfo* rasterizationI = &pipeline->rasterization_state;
+	
+	if (rasterizationI->cull_mode != VI_CULL_MODE_NONE)
+	{
+		glEnable(GL_CULL_FACE);
+
+		GLenum cullMode;
+		cast_cull_mode_gl(rasterizationI->cull_mode, &cullMode);
+		glCullFace(cullMode);
+	}
+	else
+		glDisable(GL_CULL_FACE);
+
+	GLenum polygonMode;
+	cast_polygon_mode_gl(rasterizationI->polygon_mode, &polygonMode);
+	glPolygonMode(GL_FRONT_AND_BACK, polygonMode);
+	if (polygonMode == GL_LINE)
+		glLineWidth(rasterizationI->line_width);
 
 	const VIPipelineDepthStencilStateInfo* dsI = &pipeline->depth_stencil_state;
 
@@ -3327,6 +3373,26 @@ static void cast_stencil_op_gl(VIStencilOp in_op, GLenum* out_op)
 	*out_op = vi_stencil_op_table[(int)in_op].gl_stencil_op;
 }
 
+static void cast_polygon_mode_vk(VIPolygonMode in_mode, VkPolygonMode* out_mode)
+{
+	*out_mode = vi_polygon_mode_table[(int)in_mode].vk_polygon_mode;
+}
+
+static void cast_polygon_mode_gl(VIPolygonMode in_mode, GLenum* out_mode)
+{
+	*out_mode = vi_polygon_mode_table[(int)in_mode].gl_polygon_mode;
+}
+
+static void cast_cull_mode_vk(VICullMode in_mode, VkCullModeFlags* out_mode)
+{
+	*out_mode = vi_cull_mode_table[(int)in_mode].vk_cull_mode;
+}
+
+static void cast_cull_mode_gl(VICullMode in_mode, GLenum* out_mode)
+{
+	*out_mode = vi_cull_mode_table[(int)in_mode].gl_cull_mode;
+}
+
 static void cast_stencil_op_state_vk(const VIStencilOpStateInfo& in_state, VkStencilOpState* out_state)
 {
 	cast_stencil_op_vk(in_state.pass_op, &out_state->passOp);
@@ -3869,6 +3935,7 @@ VIDevice vi_create_device_gl(const VIDeviceInfo* info, VIDeviceLimits* limits)
 	gl_create_swapchain_framebuffer(gl, device->swapchain_framebuffers);
 
 	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+	glFrontFace(GL_CCW);
 
 	GLint gl_max_compute_workgroup_invocations;
 	GLint gl_max_compute_workgroup_count_x, gl_max_compute_workgroup_size_x;
@@ -4650,6 +4717,7 @@ VIPipeline vi_create_pipeline(VIDevice device, const VIPipelineInfo* info)
 	pipeline->device = device;
 	pipeline->blend_state = info->blend_state;
 	pipeline->depth_stencil_state = info->depth_stencil_state;
+	pipeline->rasterization_state = info->rasterization_state;
 	pipeline->layout = info->layout;
 	pipeline->vertex_bindings.resize(info->vertex_binding_count);
 	pipeline->vertex_attributes.resize(info->vertex_attribute_count);
@@ -4750,18 +4818,23 @@ VIPipeline vi_create_pipeline(VIDevice device, const VIPipelineInfo* info)
 	multisampleStateCI.alphaToCoverageEnable = VK_FALSE;
 	multisampleStateCI.alphaToOneEnable = VK_FALSE;
 
+	VkPolygonMode polygonMode;
+	VkCullModeFlags cullMode;
+	cast_polygon_mode_vk(info->rasterization_state.polygon_mode, &polygonMode);
+	cast_cull_mode_vk(info->rasterization_state.cull_mode, &cullMode);
+
 	VkPipelineRasterizationStateCreateInfo rasterizationCI{};
 	rasterizationCI.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 	rasterizationCI.depthClampEnable = VK_FALSE;
 	rasterizationCI.rasterizerDiscardEnable = VK_FALSE;
-	rasterizationCI.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterizationCI.polygonMode = polygonMode;
 	rasterizationCI.depthBiasEnable = VK_FALSE;
 	rasterizationCI.depthBiasConstantFactor = 0.0f;
 	rasterizationCI.depthBiasClamp = 0.0f;
 	rasterizationCI.depthBiasSlopeFactor = 0.0f;
-	rasterizationCI.lineWidth = 1.0f;
-	rasterizationCI.cullMode = VK_CULL_MODE_BACK_BIT; // TODO: parameterize
-	pipeline->vk.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE; // TODO: parameterize
+	rasterizationCI.lineWidth = info->rasterization_state.line_width;
+	rasterizationCI.cullMode = cullMode;
+	pipeline->vk.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 
 	// TODO: this doesnt really matter for dynamic viewport states
 	// TODO: flip initial viewport?

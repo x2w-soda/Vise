@@ -409,6 +409,28 @@ struct VIPipelineDepthStencilStateInfo
 	VIStencilOpStateInfo stencil_back;
 };
 
+enum VIPolygonMode
+{
+	VI_POLYGON_MODE_FILL,
+	VI_POLYGON_MODE_LINE,
+	VI_POLYGON_MODE_POINT,
+};
+
+enum VICullMode
+{
+	VI_CULL_MODE_NONE,
+	VI_CULL_MODE_BACK,
+	VI_CULL_MODE_FRONT,
+	VI_CULL_MODE_FRONT_AND_BACK,
+};
+
+struct VIPipelineRasterizationStateInfo
+{
+	VIPolygonMode polygon_mode = VI_POLYGON_MODE_FILL;
+	VICullMode cull_mode = VI_CULL_MODE_BACK;
+	float line_width = 1.0f;
+};
+
 struct VIPipelineInfo
 {
 	uint32_t vertex_binding_count;
@@ -418,6 +440,7 @@ struct VIPipelineInfo
 	VIPipelineLayout layout;
 	VIPipelineBlendStateInfo blend_state;
 	VIPipelineDepthStencilStateInfo depth_stencil_state;
+	VIPipelineRasterizationStateInfo rasterization_state;
 	VIModule vertex_module;
 	VIModule fragment_module;
 	VIPass pass;
