@@ -65,11 +65,16 @@ ExampleTriangle::ExampleTriangle(VIBackend backend)
 	vertex_attrs[1].binding = 0;
 	vertex_attrs[1].offset = sizeof(float) * 2;
 
+	std::array<VIModule, 2> modules;
+	modules[0] = mVertexModule;
+	modules[1] = mFragmentModule;
+
 	VIPipelineInfo pipelineI;
-	pipelineI.vertex_module = mVertexModule;
-	pipelineI.fragment_module = mFragmentModule;
 	pipelineI.pass = pass;
 	pipelineI.layout = mPipelineLayout;
+	pipelineI.module_count = modules.size();
+	pipelineI.modules = modules.data();
+	pipelineI.primitive_topology = VI_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 	pipelineI.vertex_attribute_count = vertex_attrs.size();
 	pipelineI.vertex_attributes = vertex_attrs.data();
 	pipelineI.vertex_binding_count = 1;

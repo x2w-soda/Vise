@@ -358,12 +358,11 @@ struct VIPipelineObj : VIObject
 {
 	std::vector<VIVertexBinding> vertex_bindings;
 	std::vector<VIVertexAttribute> vertex_attributes;
+	std::vector<VIModule> modules;
 	VIPipelineLayout layout;
 	VIPipelineBlendStateInfo blend_state;
 	VIPipelineDepthStencilStateInfo depth_stencil_state;
 	VIPipelineRasterizationStateInfo rasterization_state;
-	VIModule vertex_module;
-	VIModule fragment_module;
 
 	union
 	{
@@ -377,6 +376,7 @@ struct VIPipelineObj : VIObject
 		{
 			GLuint program;
 			GLuint vao;
+			GLenum primitive;
 		} gl;
 	};
 };
@@ -450,11 +450,17 @@ struct VIOpenGL
 	VIDevice vi_device;
 	GLenum index_type;
 	size_t index_size;
-	GLuint active_program;  // during execution
-	VIModule active_module; // during execution
 	VIFramebuffer active_framebuffer;
 	VIFrame frame;
 	std::vector<GLSubmitInfo> submits;
+
+	struct
+	{
+		GLuint program;
+		VIPipeline pipeline;
+		uint32_t push_constant_count;
+		GLPushConstant* push_constants;
+	} execution;
 };
 
 // Vise Vulkan Context
@@ -659,8 +665,6 @@ struct VIDeviceObj
 	VIQueueObj queue_present;
 	VIPass swapchain_pass;
 	VIFramebuffer swapchain_framebuffers;
-	VIPipeline active_pipeline;
-	VIComputePipeline active_compute_pipeline;
 	VIDeviceLimits limits;
 
 	// NOTE: currently the vise device encapsulates the whole backend context,
@@ -706,7 +710,7 @@ static void gl_destroy_module(VIDevice device, VIModule module);
 static void gl_create_pipeline_layout(VIDevice device, VIPipelineLayout layout, const VIPipelineLayoutInfo* info);
 static void gl_remap(std::vector<GLRemap>& remaps, uint32_t set_count, uint32_t* binding_counts, const VIBinding** bindings);
 static void gl_destroy_pipeline_layout(VIDevice device, VIPipelineLayout layout);
-static void gl_create_pipeline(VIDevice device, VIPipeline pipeline, VIModule vm, VIModule fm);
+static void gl_create_pipeline(VIDevice device, VIPipeline pipeline, uint32_t module_count, VIModule* modules);
 static void gl_destroy_pipeline(VIDevice device, VIPipeline pipeline);
 static void gl_create_compute_pipeline(VIDevice device, VIComputePipeline pipeline, VIModule compute_module);
 static void gl_destroy_compute_pipeline(VIDevice device, VIComputePipeline pipeline);
@@ -784,6 +788,8 @@ static void cast_polygon_mode_vk(VIPolygonMode in_mode, VkPolygonMode* out_mode)
 static void cast_polygon_mode_gl(VIPolygonMode in_mode, GLenum* out_mode);
 static void cast_cull_mode_vk(VICullMode in_mode, VkCullModeFlags* out_mode);
 static void cast_cull_mode_gl(VICullMode in_mode, GLenum* out_mode);
+static void cast_primitive_topology_vk(VIPrimitiveTopology in_primitive, VkPrimitiveTopology* out_primitive);
+static void cast_primitive_topology_gl(VIPrimitiveTopology in_primitive, GLenum* out_primitive);
 static void cast_stencil_op_state_vk(const VIStencilOpStateInfo& in_state, VkStencilOpState* out_state);
 static void cast_format_vk(VIFormat in_format, VkFormat* out_format, VkImageAspectFlags* out_aspects);
 static void cast_format_vk(VkFormat in_format, VIFormat* out_format);
@@ -990,6 +996,17 @@ static const VICullModeEntry vi_cull_mode_table[] = {
 	{ VI_CULL_MODE_BACK,           VK_CULL_MODE_BACK_BIT,       GL_BACK },
 	{ VI_CULL_MODE_FRONT,          VK_CULL_MODE_FRONT_BIT,      GL_FRONT },
 	{ VI_CULL_MODE_FRONT_AND_BACK, VK_CULL_MODE_FRONT_AND_BACK, GL_FRONT_AND_BACK },
+};
+
+struct VIPrimitiveTopologyEntry
+{
+	VIPrimitiveTopology vi_primitive;
+	VkPrimitiveTopology vk_primitive;
+	GLenum gl_primitive;
+};
+
+static const VIPrimitiveTopologyEntry vi_primitive_topology_table[] = {
+	{ VI_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,  VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,  GL_TRIANGLES },
 };
 
 struct VIImageTypeEntry
@@ -1915,12 +1932,13 @@ static void gl_destroy_pipeline_layout(VIDevice device, VIPipelineLayout layout)
 		vi_free(layout->gl.remaps);
 }
 
-static void gl_create_pipeline(VIDevice device, VIPipeline pipeline, VIModule vm, VIModule fm)
+static void gl_create_pipeline(VIDevice device, VIPipeline pipeline, uint32_t module_count, VIModule* modules)
 {
 	pipeline->gl.program = glCreateProgram();
 
-	glAttachShader(pipeline->gl.program, vm->gl.shader);
-	glAttachShader(pipeline->gl.program, fm->gl.shader);
+	for (uint32_t i = 0; i < module_count; i++)
+		glAttachShader(pipeline->gl.program, modules[i]->gl.shader);
+
 	glLinkProgram(pipeline->gl.program);
 
 	GLint success;
@@ -2491,13 +2509,13 @@ static void gl_cmd_execute_draw(VIDevice device, GLCommand* glcmd)
 {
 	VI_ASSERT(glcmd->type == GL_COMMAND_TYPE_DRAW);
 
-	GLenum mode = GL_TRIANGLES; // TODO:
+	GLenum mode = device->gl.execution.pipeline->gl.primitive;
 	GLint first = (GLint)glcmd->draw.vertex_start;
 	GLsizei count = (GLsizei)glcmd->draw.vertex_count;
 	GLsizei instance_count = (GLsizei)glcmd->draw.instance_count;
 	GLuint base_instance = (GLuint)glcmd->draw.instance_start;
 
-	GLint location = glGetUniformLocation(device->gl.active_program, "SPIRV_Cross_BaseInstance");
+	GLint location = glGetUniformLocation(device->gl.execution.program, "SPIRV_Cross_BaseInstance");
 	if (location >= 0)
 		glUniform1i(location, glcmd->draw.instance_start);
 	
@@ -2510,13 +2528,13 @@ static void gl_cmd_execute_draw_indexed(VIDevice device, GLCommand* glcmd)
 
 	size_t index_size = device->gl.index_size;
 	GLenum index_type = device->gl.index_type;
-	GLenum mode = GL_TRIANGLES; // TODO:
+	GLenum mode = device->gl.execution.pipeline->gl.primitive;
 	GLsizei index_count = (GLsizei)glcmd->draw_indexed.index_count;
 	GLint base_index = (GLint)glcmd->draw_indexed.index_start;
 	GLuint base_instance = (GLuint)glcmd->draw_indexed.instance_start;
 	GLsizei instance_count = (GLsizei)glcmd->draw_indexed.instance_count;
 
-	GLint location = glGetUniformLocation(device->gl.active_program, "SPIRV_Cross_BaseInstance");
+	GLint location = glGetUniformLocation(device->gl.execution.program, "SPIRV_Cross_BaseInstance");
 	if (location >= 0)
 		glUniform1i(location, glcmd->draw.instance_start);
 
@@ -2526,15 +2544,15 @@ static void gl_cmd_execute_draw_indexed(VIDevice device, GLCommand* glcmd)
 static void gl_cmd_execute_push_constants(VIDevice device, GLCommand* glcmd)
 {
 	VI_ASSERT(glcmd->type == GL_COMMAND_TYPE_PUSH_CONSTANTS);
+	VI_ASSERT(device->gl.execution.push_constant_count > 0);
 
 	uint32_t range_size = glcmd->push_constants.size;
 	uint32_t range_offset = glcmd->push_constants.offset;
-	VIModule module = device->gl.active_module;
 
-	for (uint32_t i = 0; i < module->gl.push_constant_count; i++)
+	for (uint32_t i = 0; i < device->gl.execution.push_constant_count; i++)
 	{
-		const GLPushConstant* pc = module->gl.push_constants + i;
-		GLint pc_loc = glGetUniformLocation(device->gl.active_program, pc->uniform_name.c_str());
+		const GLPushConstant* pc = device->gl.execution.push_constants + i;
+		GLint pc_loc = glGetUniformLocation(device->gl.execution.program, pc->uniform_name.c_str());
 
 		// only update uniform variable if it is completely in range.
 		if (pc_loc >= 0 && (pc->offset >= range_offset) && (pc->offset + pc->size <= range_offset + range_size))
@@ -2652,17 +2670,24 @@ static void gl_cmd_execute_bind_pipeline(VIDevice device, GLCommand* glcmd)
 {
 	VI_ASSERT(glcmd->type == GL_COMMAND_TYPE_BIND_PIPELINE);
 
-	VIPipeline pipeline = device->active_pipeline = glcmd->bind_pipeline;
+	VIPipeline pipeline = glcmd->bind_pipeline;
+
+	device->gl.execution.pipeline = pipeline;
+	device->gl.execution.program = pipeline->gl.program;
+	device->gl.execution.push_constant_count = 0;
+	device->gl.execution.push_constants = nullptr;
 
 	// for OpenGL push constants, the lookup table is stored in each module,
-	// if both VM and FM have a lookup table they should be identical.
-	VIModule active_vm = pipeline->vertex_module;
-	VIModule active_fm = pipeline->fragment_module;
-
-	device->gl.active_program = pipeline->gl.program;
-	device->gl.active_module = active_vm;
-	if (active_vm->gl.push_constant_count == 0 && active_fm->gl.push_constant_count > 0)
-		device->gl.active_module = active_fm;
+	// if multiple modules have a lookup table they should be identical.
+	for (VIModule& mod : pipeline->modules)
+	{
+		if (mod->gl.push_constant_count > 0)
+		{
+			device->gl.execution.push_constant_count = mod->gl.push_constant_count;
+			device->gl.execution.push_constants = mod->gl.push_constants;
+			break;
+		}
+	}
 
 	glBindVertexArray(glcmd->bind_pipeline->gl.vao);
 	glUseProgram(glcmd->bind_pipeline->gl.program);
@@ -2751,8 +2776,7 @@ void gl_cmd_execute_bind_compute_pipeline(VIDevice device, GLCommand* glcmd)
 {
 	VI_ASSERT(glcmd->type == GL_COMMAND_TYPE_BIND_COMPUTE_PIPELINE);
 
-	device->gl.active_program = glcmd->bind_compute_pipeline->gl.program;
-	device->gl.active_module = glcmd->bind_compute_pipeline->compute_module;
+	device->gl.execution.program = glcmd->bind_compute_pipeline->gl.program;
 
 	glUseProgram(glcmd->bind_compute_pipeline->gl.program);
 }
@@ -3391,6 +3415,16 @@ static void cast_cull_mode_vk(VICullMode in_mode, VkCullModeFlags* out_mode)
 static void cast_cull_mode_gl(VICullMode in_mode, GLenum* out_mode)
 {
 	*out_mode = vi_cull_mode_table[(int)in_mode].gl_cull_mode;
+}
+
+static void cast_primitive_topology_vk(VIPrimitiveTopology in_primitive, VkPrimitiveTopology* out_primitive)
+{
+	*out_primitive = vi_primitive_topology_table[(int)in_primitive].vk_primitive;
+}
+
+static void cast_primitive_topology_gl(VIPrimitiveTopology in_primitive, GLenum* out_primitive)
+{
+	*out_primitive = vi_primitive_topology_table[(int)in_primitive].gl_primitive;
 }
 
 static void cast_stencil_op_state_vk(const VIStencilOpStateInfo& in_state, VkStencilOpState* out_state)
@@ -4721,8 +4755,7 @@ VIPipeline vi_create_pipeline(VIDevice device, const VIPipelineInfo* info)
 	pipeline->layout = info->layout;
 	pipeline->vertex_bindings.resize(info->vertex_binding_count);
 	pipeline->vertex_attributes.resize(info->vertex_attribute_count);
-	pipeline->vertex_module = info->vertex_module;
-	pipeline->fragment_module = info->fragment_module;
+	pipeline->modules.resize(info->module_count);
 
 	for (uint32_t i = 0; i < info->vertex_binding_count; i++)
 		pipeline->vertex_bindings[i] = info->vertex_bindings[i];
@@ -4730,9 +4763,13 @@ VIPipeline vi_create_pipeline(VIDevice device, const VIPipelineInfo* info)
 	for (uint32_t i = 0; i < info->vertex_attribute_count; i++)
 		pipeline->vertex_attributes[i] = info->vertex_attributes[i];
 
+	for (uint32_t i = 0; i < info->module_count; i++)
+		pipeline->modules[i] = info->modules[i];
+
 	if (device->backend == VI_BACKEND_OPENGL)
 	{
-		gl_create_pipeline(device, pipeline, info->vertex_module, info->fragment_module);
+		gl_create_pipeline(device, pipeline, info->module_count, info->modules);
+		cast_primitive_topology_gl(info->primitive_topology, &pipeline->gl.primitive);
 		return pipeline;
 	}
 
@@ -4764,16 +4801,17 @@ VIPipeline vi_create_pipeline(VIDevice device, const VIPipelineInfo* info)
 	blendStateCI.pAttachments = blendAttachments.data();
 	blendStateCI.blendConstants;  // Optional
 
-	// vertex and fragment shader stage
-	VkPipelineShaderStageCreateInfo shaderStageCI[2]{};
-	shaderStageCI[0].module = info->vertex_module->vk.handle;
-	shaderStageCI[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	shaderStageCI[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-	shaderStageCI[0].pName = VI_SHADER_ENTRY_POINT;
-	shaderStageCI[1].module = info->fragment_module->vk.handle;
-	shaderStageCI[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	shaderStageCI[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-	shaderStageCI[1].pName = VI_SHADER_ENTRY_POINT;
+	std::vector<VkPipelineShaderStageCreateInfo> shaderStageCI(info->module_count);
+	for (size_t i = 0; i < info->module_count; i++)
+	{
+		VkShaderStageFlagBits stage;
+		cast_module_type_vk(info->modules[i]->type, &stage);
+
+		shaderStageCI[i].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		shaderStageCI[i].stage = stage;
+		shaderStageCI[i].module = info->modules[i]->vk.handle;
+		shaderStageCI[i].pName = VI_SHADER_ENTRY_POINT;
+	}
 
 	std::array<VkDynamicState, 3> dynamicStates = {
 		VK_DYNAMIC_STATE_VIEWPORT,
@@ -4804,10 +4842,12 @@ VIPipeline vi_create_pipeline(VIDevice device, const VIPipelineInfo* info)
 	vertexInputCI.vertexBindingDescriptionCount = vertexBindings.size();
 	vertexInputCI.pVertexBindingDescriptions = vertexBindings.data();
 
+	VkPrimitiveTopology topology;
+	cast_primitive_topology_vk(info->primitive_topology, &topology);
 	VkPipelineInputAssemblyStateCreateInfo assemblyCI{};
 	assemblyCI.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
 	assemblyCI.primitiveRestartEnable = VK_FALSE;
-	assemblyCI.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	assemblyCI.topology = topology;
 
 	VkPipelineMultisampleStateCreateInfo multisampleStateCI{};
 	multisampleStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
@@ -4875,8 +4915,8 @@ VIPipeline vi_create_pipeline(VIDevice device, const VIPipelineInfo* info)
 
 	VkGraphicsPipelineCreateInfo pipelineCI{};
 	pipelineCI.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-	pipelineCI.stageCount = 2;
-	pipelineCI.pStages = shaderStageCI;
+	pipelineCI.stageCount = shaderStageCI.size();
+	pipelineCI.pStages = shaderStageCI.data();
 	pipelineCI.pVertexInputState = &vertexInputCI;
 	pipelineCI.pInputAssemblyState = &assemblyCI;
 	pipelineCI.pViewportState = &viewportStateCI;
@@ -5332,16 +5372,10 @@ void vi_begin_command(VICommand cmd, VkCommandBufferUsageFlags flags)
 	bufferBI.flags = flags;
 
 	VK_CHECK(vkBeginCommandBuffer(cmd->vk.handle, &bufferBI));
-
-	// TODO: put in thread safe memory, use VICommandPool for each CPU thread?
-	cmd->device->active_pipeline = VI_NULL;
 }
 
 void vi_end_command(VICommand cmd)
 {
-	// TODO: put in thread safe memory, use VICommandPool for each CPU thread?
-	cmd->device->active_pipeline = VI_NULL;
-
 	if (cmd->device->backend == VI_BACKEND_OPENGL)
 		return;
 
@@ -5537,10 +5571,9 @@ void vi_cmd_end_pass(VICommand cmd)
 
 void vi_cmd_bind_graphics_pipeline(VICommand cmd, VIPipeline pipeline)
 {
-	cmd->device->active_pipeline = pipeline;
-
 	if (cmd->device->backend == VI_BACKEND_OPENGL)
 	{
+		cmd->gl.active_pipeline = pipeline;
 		GLCommand* glcmd = gl_append_command(cmd, GL_COMMAND_TYPE_BIND_PIPELINE);
 		glcmd->bind_pipeline = pipeline;
 		return;
@@ -5593,12 +5626,12 @@ void vi_cmd_bind_vertex_buffers(VICommand cmd, uint32_t first_binding, uint32_t 
 {
 	if (cmd->device->backend == VI_BACKEND_OPENGL)
 	{
-		VI_ASSERT(cmd->device->active_pipeline != VI_NULL);
+		VI_ASSERT(cmd->gl.active_pipeline != VI_NULL);
 
 		GLCommand* glcmd = gl_append_command(cmd, GL_COMMAND_TYPE_BIND_VERTEX_BUFFERS);
 		new (&glcmd->bind_vertex_buffers) GLCommandBindVertexBuffers();
 		glcmd->bind_vertex_buffers.first_binding = first_binding;
-		glcmd->bind_vertex_buffers.pipeline = cmd->device->active_pipeline;
+		glcmd->bind_vertex_buffers.pipeline = cmd->gl.active_pipeline;
 		glcmd->bind_vertex_buffers.buffers.resize(binding_count);
 		for (uint32_t i = 0; i < binding_count; i++)
 			glcmd->bind_vertex_buffers.buffers[i] = buffers[i];

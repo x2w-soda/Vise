@@ -405,6 +405,10 @@ ExampleSSAO::ExampleSSAO(VIBackend backend)
 	std::vector<VIVertexAttribute> meshVertexAttrs;
 	MeshVertex::GetBindingAndAttributes(meshVertexBinding, meshVertexAttrs);
 
+	std::array<VIModule, 2> modules;
+	modules[0] = mGeometryVM;
+	modules[1] = mGeometryFM;
+
 	VIPipelineInfo pipelineI;
 	pipelineI.layout = mPipelineLayoutUCCC2;
 	pipelineI.pass = mGeometryPass;
@@ -412,8 +416,8 @@ ExampleSSAO::ExampleSSAO(VIBackend backend)
 	pipelineI.vertex_attributes = meshVertexAttrs.data();
 	pipelineI.vertex_binding_count = 1;
 	pipelineI.vertex_bindings = &meshVertexBinding;
-	pipelineI.vertex_module = mGeometryVM;
-	pipelineI.fragment_module = mGeometryFM;
+	pipelineI.module_count = modules.size();
+	pipelineI.modules = modules.data();
 	mGeometryPipeline = vi_create_pipeline(mDevice, &pipelineI);
 
 	VIVertexBinding quadVertexBinding;
@@ -433,20 +437,20 @@ ExampleSSAO::ExampleSSAO(VIBackend backend)
 	pipelineI.vertex_attributes = quadVertexAttrs.data();
 	pipelineI.vertex_binding_count = 1;
 	pipelineI.vertex_bindings = &quadVertexBinding;
-	pipelineI.vertex_module = mQuadVM;
+	modules[0] = mQuadVM;
 
 	pipelineI.pass = mColorR8Pass;
 	pipelineI.layout = mPipelineLayoutUCCC2;
-	pipelineI.fragment_module = mSSAOFM;
+	modules[1] = mSSAOFM;
 	mSSAOPipeline = vi_create_pipeline(mDevice, &pipelineI);
 
 	pipelineI.layout = mPipelineLayoutCCCC;
-	pipelineI.fragment_module = mSSAOBlurFM;
+	modules[1] = mSSAOBlurFM;
 	mSSAOBlurPipeline = vi_create_pipeline(mDevice, &pipelineI);
 
 	pipelineI.pass = vi_device_get_swapchain_pass(mDevice);
 	pipelineI.layout = mPipelineLayoutCCCC;
-	pipelineI.fragment_module = mCompositionFM;
+	modules[1] = mCompositionFM;
 	mCompositionPipeline = vi_create_pipeline(mDevice, &pipelineI);
 
 	uint32_t graphics_family = vi_device_get_graphics_family_index(mDevice);

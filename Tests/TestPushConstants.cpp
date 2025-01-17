@@ -1,4 +1,5 @@
 #include <filesystem>
+#include <array>
 #include "TestPushConstants.h"
 
 // Vise NDC positions, CCW
@@ -95,16 +96,20 @@ TestPushConstants::TestPushConstants(VIBackend backend)
 	moduleI.vise_glsl = test_fragment_src;
 	mTestFM = vi_create_module(mDevice, &moduleI);
 
+	std::array<VIModule, 2> modules;
+	modules[0] = mTestVM1;
+	modules[1] = mTestFM;
+
 	VIPipelineInfo pipelineI;
 	pipelineI.vertex_attribute_count = 0;
 	pipelineI.vertex_binding_count = 0;
-	pipelineI.vertex_module = mTestVM1;
-	pipelineI.fragment_module = mTestFM;
+	pipelineI.module_count = modules.size();
+	pipelineI.modules = modules.data();
 	pipelineI.pass = mScreenshotPass;
 	pipelineI.layout = mTestPipelineLayout;
 	mTestPipeline1 = vi_create_pipeline(mDevice, &pipelineI);
 
-	pipelineI.vertex_module = mTestVM2;
+	modules[0] = mTestVM2;
 	mTestPipeline2 = vi_create_pipeline(mDevice, &pipelineI);
 
 	uint32_t graphics_family = vi_device_get_graphics_family_index(mDevice);

@@ -201,9 +201,13 @@ ExamplePostProcess::ExamplePostProcess(VIBackend backend)
 	quadVertexAttrs[1].binding = 0;
 	quadVertexAttrs[1].offset = sizeof(float) * 2;
 
+	std::array<VIModule, 2> modules;
+	modules[0] = mVMRender;
+	modules[1] = mFMRender;
+
 	VIPipelineInfo pipelineI;
-	pipelineI.vertex_module = mVMRender;
-	pipelineI.fragment_module = mFMRender;
+	pipelineI.module_count = modules.size();
+	pipelineI.modules = modules.data();
 	pipelineI.layout = mPipelineLayout;
 	pipelineI.pass = mSceneRenderPass;
 	pipelineI.vertex_attribute_count = vertexAttrs.size();
@@ -212,8 +216,8 @@ ExamplePostProcess::ExamplePostProcess(VIBackend backend)
 	pipelineI.vertex_bindings = &vertexBinding;
 	mPipelineRender = vi_create_pipeline(mDevice, &pipelineI);
 
-	pipelineI.vertex_module = mVMPostProcess;
-	pipelineI.fragment_module = mFMGrayscale;
+	modules[0] = mVMPostProcess;
+	modules[1] = mFMGrayscale;
 	pipelineI.pass = mPostProcessPass;
 	pipelineI.vertex_attribute_count = quadVertexAttrs.size();
 	pipelineI.vertex_attributes = quadVertexAttrs.data();
@@ -221,10 +225,10 @@ ExamplePostProcess::ExamplePostProcess(VIBackend backend)
 	pipelineI.vertex_bindings = &quadVertexBinding;
 	mPipelineGrayscale = vi_create_pipeline(mDevice, &pipelineI);
 	
-	pipelineI.fragment_module = mFMInvert;
+	modules[1] = mFMInvert;
 	mPipelineInvert = vi_create_pipeline(mDevice, &pipelineI);
 
-	pipelineI.fragment_module = mFMNone;
+	modules[1] = mFMNone;
 	mPipelineNone = vi_create_pipeline(mDevice, &pipelineI);
 
 	float quadVertices[] = {

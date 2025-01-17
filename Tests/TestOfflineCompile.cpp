@@ -1,3 +1,4 @@
+#include <array>
 #include "TestOfflineCompile.h"
 
 static const char test_vertex_glsl[] = R"(
@@ -65,11 +66,15 @@ TestOfflineCompile::TestOfflineCompile(VIBackend backend)
 	moduleI.vise_binary = mTestBinaryFM;
 	mTestFM = vi_create_module(mDevice, &moduleI);
 
+	std::array<VIModule, 2> modules;
+	modules[0] = mTestVM;
+	modules[1] = mTestFM;
+
 	VIPipelineInfo pipelineI;
 	pipelineI.layout = mTestPipelineLayout;
 	pipelineI.pass = mScreenshotPass;
-	pipelineI.vertex_module = mTestVM;
-	pipelineI.fragment_module = mTestFM;
+	pipelineI.module_count = modules.size();
+	pipelineI.modules = modules.data();
 	pipelineI.vertex_attribute_count = 0;
 	pipelineI.vertex_binding_count = 0;
 	mTestPipeline = vi_create_pipeline(mDevice, &pipelineI);

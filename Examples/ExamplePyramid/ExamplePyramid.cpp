@@ -91,9 +91,13 @@ ExamplePyramid::ExamplePyramid(VIBackend backend)
 	vertexAttrs[1].binding = 0;
 	vertexAttrs[1].offset = sizeof(float) * 3;
 
+	std::array<VIModule, 2> modules;
+	modules[0] = mVertexModule;
+	modules[1] = mFragmentModule;
+
 	VIPipelineInfo pipelineI;
-	pipelineI.vertex_module = mVertexModule;
-	pipelineI.fragment_module = mFragmentModule;
+	pipelineI.module_count = modules.size();
+	pipelineI.modules = modules.data();
 	pipelineI.layout = mPipelineLayout;
 	pipelineI.pass = pass;
 	pipelineI.vertex_attribute_count = vertexAttrs.size();

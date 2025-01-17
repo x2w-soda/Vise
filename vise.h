@@ -431,18 +431,24 @@ struct VIPipelineRasterizationStateInfo
 	float line_width = 1.0f;
 };
 
+enum VIPrimitiveTopology
+{
+	VI_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+};
+
 struct VIPipelineInfo
 {
 	uint32_t vertex_binding_count;
 	uint32_t vertex_attribute_count;
+	uint32_t module_count;
+	VIModule* modules;
 	VIVertexAttribute* vertex_attributes;
 	VIVertexBinding* vertex_bindings;
+	VIPrimitiveTopology primitive_topology = VI_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 	VIPipelineLayout layout;
 	VIPipelineBlendStateInfo blend_state;
 	VIPipelineDepthStencilStateInfo depth_stencil_state;
 	VIPipelineRasterizationStateInfo rasterization_state;
-	VIModule vertex_module;
-	VIModule fragment_module;
 	VIPass pass;
 };
 

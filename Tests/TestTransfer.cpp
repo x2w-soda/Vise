@@ -1,3 +1,4 @@
+#include <array>
 #include "TestTransfer.h"
 
 #define PATTERN_SIZE 64
@@ -76,11 +77,15 @@ TestTransfer::TestTransfer(VIBackend backend)
 	moduleI.vise_glsl = image_fragment_src;
 	mFM = vi_create_module(mDevice, &moduleI);
 
+	std::array<VIModule, 2> modules;
+	modules[0] = mVM;
+	modules[1] = mFM;
+
 	VIPipelineInfo pipelineI;
 	pipelineI.vertex_attribute_count = 0;
 	pipelineI.vertex_binding_count = 0;
-	pipelineI.vertex_module = mVM;
-	pipelineI.fragment_module = mFM;
+	pipelineI.module_count = modules.size();
+	pipelineI.modules = modules.data();
 	pipelineI.pass = mScreenshotPass;
 	pipelineI.layout = mPipelineLayout;
 	mPipeline = vi_create_pipeline(mDevice, &pipelineI);

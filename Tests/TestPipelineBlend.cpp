@@ -1,3 +1,4 @@
+#include <array>
 #include "TestPipelineBlend.h"
 
 const char triangle_vertex_src[] = R"(
@@ -60,13 +61,17 @@ TestPipelineBlend::TestPipelineBlend(VIBackend backend)
 	moduleI.vise_glsl = triangle_fragment_src;
 	mTestFM = vi_create_module(mDevice, &moduleI);
 
+	std::array<VIModule, 2> modules;
+	modules[0] = mTestVM;
+	modules[1] = mTestFM;
+
 	// with blending disabled, the alpha channel is ignored and the last drawn color is preserved
 	VIPipelineInfo pipelineI;
 	pipelineI.layout = mTestPipelineLayout;
 	pipelineI.vertex_attribute_count = 0;
 	pipelineI.vertex_binding_count = 0;
-	pipelineI.vertex_module = mTestVM;
-	pipelineI.fragment_module = mTestFM;
+	pipelineI.module_count = modules.size();
+	pipelineI.modules = modules.data();
 	pipelineI.pass = mScreenshotPass;
 	pipelineI.blend_state.enabled = false;
 	mPipelineBlendDisabled = vi_create_pipeline(mDevice, &pipelineI);

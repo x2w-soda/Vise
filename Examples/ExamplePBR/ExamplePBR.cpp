@@ -522,11 +522,15 @@ ExamplePBR::ExamplePBR(VIBackend backend)
 	mSkyboxVM = CreateOrLoadModule(mDevice, mBackend, mPipelineLayoutSingleImage, VI_MODULE_TYPE_VERTEX, skybox_vertex_glsl, "skybox_vm");
 	mSkyboxFM = CreateOrLoadModule(mDevice, mBackend, mPipelineLayoutSingleImage, VI_MODULE_TYPE_FRAGMENT, skybox_fragment_glsl, "skybox_fm");
 
+	std::array<VIModule, 2> modules;
+	modules[0] = mSkyboxVM;
+	modules[1] = mSkyboxFM;
+
 	VIPipelineInfo pipelineI;
 	pipelineI.layout = mPipelineLayoutSingleImage;
 	pipelineI.pass = vi_device_get_swapchain_pass(mDevice);
-	pipelineI.vertex_module = mSkyboxVM;
-	pipelineI.fragment_module = mSkyboxFM;
+	pipelineI.module_count = modules.size();
+	pipelineI.modules = modules.data();
 	pipelineI.vertex_attribute_count = skyboxVertexAttrs.size();
 	pipelineI.vertex_attributes = skyboxVertexAttrs.data();
 	pipelineI.vertex_binding_count = skyboxVertexBindings.size();
@@ -542,14 +546,14 @@ ExamplePBR::ExamplePBR(VIBackend backend)
 	std::vector<VIVertexAttribute> pbrVertAttributes;
 	GLTFVertex::GetBindingAndAttributes(pbrVertBinding, pbrVertAttributes);
 
+	modules[0] = mPBRVM;
+	modules[1] = mPBRFM;
 	pipelineI.layout = mPipelineLayoutPBR;
 	pipelineI.pass = vi_device_get_swapchain_pass(mDevice);
 	pipelineI.vertex_binding_count = 1;
 	pipelineI.vertex_bindings = &pbrVertBinding;
 	pipelineI.vertex_attribute_count = pbrVertAttributes.size();
 	pipelineI.vertex_attributes = pbrVertAttributes.data();
-	pipelineI.vertex_module = mPBRVM;
-	pipelineI.fragment_module = mPBRFM;
 	pipelineI.depth_stencil_state.depth_test_enabled = true;
 	pipelineI.depth_stencil_state.depth_write_enabled = true;
 	pipelineI.depth_stencil_state.depth_compare_op = VI_COMPARE_OP_LESS;
@@ -642,6 +646,10 @@ ExamplePBR::ExamplePBR(VIBackend backend)
 		mBRDFLUTVM = CreateOrLoadModule(mDevice, mBackend, mPipelineLayoutSingleImage, VI_MODULE_TYPE_VERTEX, brdflut_vertex_glsl, "brdflut_vm");
 		mBRDFLUTFM = CreateOrLoadModule(mDevice, mBackend, mPipelineLayoutSingleImage, VI_MODULE_TYPE_FRAGMENT, brdflut_fragment_glsl, "brdflut_fm");
 
+		std::array<VIModule, 2> modules;
+		modules[0] = mCubemapFaceVM;
+		modules[1] = mHDRI2CubeFM;
+
 		VIPipelineInfo pipelineI;
 		pipelineI.pass = mCubemapPass;
 		pipelineI.layout = mPipelineLayoutSingleImage;
@@ -649,21 +657,21 @@ ExamplePBR::ExamplePBR(VIBackend backend)
 		pipelineI.vertex_attributes = skyboxVertexAttrs.data();
 		pipelineI.vertex_binding_count = skyboxVertexBindings.size();
 		pipelineI.vertex_bindings = skyboxVertexBindings.data();
-		pipelineI.vertex_module = mCubemapFaceVM;
-		pipelineI.fragment_module = mHDRI2CubeFM;
+		pipelineI.module_count = modules.size();
+		pipelineI.modules = modules.data();
 		mHDRI2CubePipeline = vi_create_pipeline(mDevice, &pipelineI);
 
-		pipelineI.fragment_module = mIrradianceFM;
+		modules[1] = mIrradianceFM;
 		mIrradiancePipeline = vi_create_pipeline(mDevice, &pipelineI);
 
-		pipelineI.fragment_module = mPrefilterFM;
+		modules[1] = mPrefilterFM;
 		mPrefilterPipeline = vi_create_pipeline(mDevice, &pipelineI);
 
 		pipelineI.pass = mBRDFLUTPass;
 		pipelineI.vertex_attribute_count = 0;
 		pipelineI.vertex_binding_count = 0;
-		pipelineI.vertex_module = mBRDFLUTVM;
-		pipelineI.fragment_module = mBRDFLUTFM;
+		modules[0] = mBRDFLUTVM;
+		modules[1] = mBRDFLUTFM;
 		mBRDFLUTPipeline = vi_create_pipeline(mDevice, &pipelineI);
 
 		mHDRISet = AllocAndUpdateSet(mDevice, mSetPool, mSetLayoutSingleImage, { { 0, VI_NULL, mHDRI } });
