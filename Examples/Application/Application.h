@@ -193,6 +193,8 @@ protected:
 	uint64_t ImGuiAddImage(VIImage image, VkImageLayout image_layout);
 	void ImGuiRemoveImage(uint64_t imgui_image);
 
+	void ImGuiDeviceProfile();
+
 protected:
 	bool mIsFirstFrame = false;
 	int mFramesInFlight;

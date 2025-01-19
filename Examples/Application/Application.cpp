@@ -616,6 +616,27 @@ void Application::ImGuiRemoveImage(uint64_t imgui_image)
 	}
 }
 
+void Application::ImGuiDeviceProfile()
+{
+	if (!ImGui::CollapsingHeader("Device Profile", ImGuiTreeNodeFlags_DefaultOpen))
+		return;
+
+	if (mBackend == VI_BACKEND_VULKAN)
+	{
+		const VIDeviceProfileVK* profile = vi_device_get_profile_vk(mDevice);
+		ImGui::Text("Vulkan Backend");
+		ImGui::Text("- device name: %s", profile->device_name);
+	}
+	else
+	{
+		const VIDeviceProfileGL* profile = vi_device_get_profile_gl(mDevice);
+		ImGui::Text("OpenGL Backend");
+		ImGui::Text("- renderer: %s", profile->renderer);
+		ImGui::Text("- version: %s", profile->version);
+		ImGui::Text("- vendor: %s", profile->vendor);
+	}
+}
+
 void Application::ImGuiOpenGLInit()
 {
 	IMGUI_CHECKVERSION();
