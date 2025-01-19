@@ -198,6 +198,20 @@ struct VIDeviceLimits
 	uint32_t max_compute_workgroup_invocations;  // vise GLSL workgroup local size product limit
 };
 
+struct VIDeviceProfileVK
+{
+	const char* device_name;             // VkPhysicalDeviceProperties::deviceName
+	VkPhysicalDeviceType device_type;    // VkPhysicalDeviceProperties::deviceType
+	uint32_t vendor_id;                  // VkPhysicalDeviceProperties::vendorID
+};
+
+struct VIDeviceProfileGL
+{
+	const char* vendor;                  // GL_VENDOR
+	const char* renderer;                // GL_RENDERER
+	const char* version;                 // GL_VERSION
+};
+
 struct VIPhysicalDevice
 {
 	VkPhysicalDevice handle;
@@ -597,6 +611,8 @@ VI_API VICommand vi_allocate_primary_command(VIDevice device, VICommandPool pool
 VI_API void vi_free_command(VIDevice device, VICommand cmd);
 
 VI_API void vi_device_wait_idle(VIDevice device);
+VI_API const VIDeviceProfileVK* vi_device_get_profile_vk(VIDevice device);
+VI_API const VIDeviceProfileGL* vi_device_get_profile_gl(VIDevice device);
 VI_API const VIPhysicalDevice* vi_device_get_physical_device(VIDevice device); // TODO: remove? common limits?
 VI_API uint32_t vi_device_get_graphics_family_index(VIDevice device); // TODO: remove?
 VI_API VIQueue vi_device_get_graphics_queue(VIDevice device); // TODO: remove?

@@ -450,6 +450,7 @@ struct VIOpenGL
 	VIDevice vi_device;
 	GLenum index_type;
 	size_t index_size;
+	VIDeviceProfileGL profile;
 	VIFramebuffer active_framebuffer;
 	VIFrame frame;
 	std::vector<GLSubmitInfo> submits;
@@ -479,6 +480,7 @@ struct VIVulkan
 	std::vector<VkExtensionProperties> ext_props;
 	std::vector<VIPhysicalDevice> pdevices;
 	VIPhysicalDevice* pdevice_chosen;
+	VIDeviceProfileVK profile;
 	VkInstance instance;
 	VkSurfaceKHR surface;
 	VkPhysicalDevice pdevice;
@@ -1396,6 +1398,11 @@ static void vk_create_device(VIVulkan* vk, VIDevice device, const VIDeviceInfo* 
 	vkGetDeviceQueue(vk->device, family_idx_graphics, 0, &device->queue_graphics.vk_handle);
 	vkGetDeviceQueue(vk->device, family_idx_transfer, 0, &device->queue_transfer.vk_handle);
 	vkGetDeviceQueue(vk->device, family_idx_present, 0, &device->queue_present.vk_handle);
+
+	// build device profile
+	vk->profile.device_name = chosen->device_props.deviceName;
+	vk->profile.device_type = chosen->device_props.deviceType;
+	vk->profile.vendor_id = chosen->device_props.vendorID;
 }
 
 static void vk_destroy_device(VIVulkan* vk)
@@ -3971,6 +3978,11 @@ VIDevice vi_create_device_gl(const VIDeviceInfo* info, VIDeviceLimits* limits)
 	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 	glFrontFace(GL_CCW);
 
+	// build device profile
+	gl->profile.vendor = (const char*)glGetString(GL_VENDOR);
+	gl->profile.version = (const char*)glGetString(GL_VERSION);
+	gl->profile.renderer = (const char*)glGetString(GL_RENDERER);
+
 	GLint gl_max_compute_workgroup_invocations;
 	GLint gl_max_compute_workgroup_count_x, gl_max_compute_workgroup_size_x;
 	GLint gl_max_compute_workgroup_count_y, gl_max_compute_workgroup_size_y;
@@ -5122,6 +5134,20 @@ void vi_device_wait_idle(VIDevice device)
 		return;
 
 	VK_CHECK(vkDeviceWaitIdle(device->vk.device));
+}
+
+const VIDeviceProfileVK* vi_device_get_profile_vk(VIDevice device)
+{
+	VI_ASSERT(device && device->backend == VI_BACKEND_VULKAN);
+
+	return &device->vk.profile;
+}
+
+const VIDeviceProfileGL* vi_device_get_profile_gl(VIDevice device)
+{
+	VI_ASSERT(device && device->backend == VI_BACKEND_OPENGL);
+
+	return &device->gl.profile;
 }
 
 const VIPhysicalDevice* vi_device_get_physical_device(VIDevice device)
