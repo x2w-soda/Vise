@@ -384,8 +384,8 @@ void ExamplePostProcess::Run()
 		ubo.ProjMat = mCamera.GetProjMat();
 		vi_buffer_map_write(frame->scene_ubo, 0, sizeof(ubo), &ubo);
 
-		vi_reset_command(frame->cmd);
-		vi_begin_command(frame->cmd, 0);
+		vi_command_reset(frame->cmd);
+		vi_command_begin(frame->cmd, 0, nullptr);
 
 		VkClearValue clear = MakeClearColor(0.1f, 0.7f, 0.7f, 1.0f);
 		VkClearValue clear_depth = MakeClearDepthStencil(1.0f, 0);
@@ -456,7 +456,7 @@ void ExamplePostProcess::Run()
 			Application::ImGuiRender(frame->cmd);
 		}
 		vi_cmd_end_pass(frame->cmd);
-		vi_end_command(frame->cmd);
+		vi_command_end(frame->cmd);
 
 		VkPipelineStageFlags stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		VISubmitInfo submitI;

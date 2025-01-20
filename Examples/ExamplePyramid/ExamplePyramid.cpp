@@ -213,7 +213,7 @@ void ExamplePyramid::Run()
 		uboData.proj = mCamera.GetProjMat();
 		vi_buffer_map_write(frame->ubo, 0, sizeof(uboData), &uboData);
 
-		vi_reset_command(frame->cmd);
+		vi_command_reset(frame->cmd);
 
 		VkClearValue color_clear = MakeClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 		VkClearValue depth_clear = MakeClearDepthStencil(1.0f, 0);
@@ -224,7 +224,7 @@ void ExamplePyramid::Run()
 		beginI.color_clear_value_count = 1;
 		beginI.depth_stencil_clear_value = &depth_clear;
 
-		vi_begin_command(frame->cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+		vi_command_begin(frame->cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr);
 		vi_cmd_begin_pass(frame->cmd, &beginI);
 		{
 			vi_cmd_bind_graphics_pipeline(frame->cmd, mPipeline);
@@ -243,7 +243,7 @@ void ExamplePyramid::Run()
 			vi_cmd_draw_indexed(frame->cmd, &info);
 		}
 		vi_cmd_end_pass(frame->cmd);
-		vi_end_command(frame->cmd);
+		vi_command_end(frame->cmd);
 
 		VkPipelineStageFlags stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		VISubmitInfo submitI;

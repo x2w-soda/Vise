@@ -127,7 +127,7 @@ TestPipelineBlend::~TestPipelineBlend()
 void TestPipelineBlend::Run()
 {
 	VICommand cmd = vi_allocate_primary_command(mDevice, mCmdPool);
-	vi_begin_command(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	vi_command_begin(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr);
 
 	VkClearValue clear_color = MakeClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	VIPassBeginInfo passBI;
@@ -221,7 +221,7 @@ void TestPipelineBlend::Run()
 
 	VkBufferImageCopy region = MakeBufferImageCopy2D(VK_IMAGE_ASPECT_COLOR_BIT, TEST_WINDOW_WIDTH, TEST_WINDOW_HEIGHT);
 	vi_cmd_copy_image_to_buffer(cmd, mScreenshotImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, mScreenshotBuffer, 1, &region);
-	vi_end_command(cmd);
+	vi_command_end(cmd);
 
 	VISubmitInfo submit;
 	submit.cmd_count = 1;

@@ -374,7 +374,7 @@ void ExampleCubemap::Run()
 		frameUBO.cameraPos = glm::vec4(mCamera.GetPosition(), 1.0f);
 		vi_buffer_map_write(frame->ubo, 0, sizeof(frameUBO), &frameUBO);
 
-		vi_begin_command(frame->cmd, 0);
+		vi_command_begin(frame->cmd, 0, nullptr);
 
 		VkClearValue clear[2];
 		clear[0] = MakeClearDepthStencil(1.0f, 0.0f);
@@ -429,7 +429,7 @@ void ExampleCubemap::Run()
 			Application::ImGuiRender(frame->cmd);
 		}
 		vi_cmd_end_pass(frame->cmd);
-		vi_end_command(frame->cmd);
+		vi_command_end(frame->cmd);
 		
 		VkPipelineStageFlags stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		VISubmitInfo submitI;

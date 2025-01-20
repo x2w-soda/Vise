@@ -293,7 +293,7 @@ VIBuffer CreateBufferStaged(VIDevice device, const VIBufferInfo* info, const voi
 	uint32_t family = vi_device_get_graphics_family_index(device);
 	VICommandPool pool = vi_create_command_pool(device, family, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
 	VICommand cmd = vi_allocate_primary_command(device, pool);
-	vi_begin_command(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	vi_command_begin(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr);
 	{
 		VkBufferCopy region;
 		region.size = info->size;
@@ -301,7 +301,7 @@ VIBuffer CreateBufferStaged(VIDevice device, const VIBufferInfo* info, const voi
 		region.dstOffset = 0;
 		vi_cmd_copy_buffer(cmd, srcBuffer, dstBuffer, 1, &region);
 	}
-	vi_end_command(cmd);
+	vi_command_end(cmd);
 
 	VISubmitInfo submitI{};
 	submitI.cmd_count = 1;
@@ -342,7 +342,7 @@ VIImage CreateImageStaged(VIDevice device, const VIImageInfo* info, const void* 
 	uint32_t family = vi_device_get_graphics_family_index(device);
 	VICommandPool pool = vi_create_command_pool(device, family, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
 	VICommand cmd = vi_allocate_primary_command(device, pool);
-	vi_begin_command(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	vi_command_begin(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr);
 	{
 		CmdImageLayoutTransition(cmd, dstImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, info->layers);
 
@@ -352,7 +352,7 @@ VIImage CreateImageStaged(VIDevice device, const VIImageInfo* info, const void* 
 
 		CmdImageLayoutTransition(cmd, dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, image_layout, info->layers);
 	}
-	vi_end_command(cmd);
+	vi_command_end(cmd);
 
 	VISubmitInfo submitI{};
 	submitI.cmds = &cmd;

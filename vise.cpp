@@ -176,6 +176,7 @@ struct GLCommand;
 struct VICommandObj : VIObject
 {
 	VICommandPool pool;
+	bool is_primary;
 
 	union
 	{
@@ -535,6 +536,7 @@ enum GLCommandType
 	GL_COMMAND_TYPE_BIND_INDEX_BUFFER,
 	GL_COMMAND_TYPE_BEGIN_PASS,
 	GL_COMMAND_TYPE_END_PASS,
+	GL_COMMAND_TYPE_EXECUTE_COMMANDS,
 	GL_COMMAND_TYPE_COPY_BUFFER,
 	GL_COMMAND_TYPE_COPY_BUFFER_TO_IMAGE,
 	GL_COMMAND_TYPE_COPY_IMAGE,
@@ -595,6 +597,11 @@ struct GLCommandBeginPass
 	std::optional<VkClearValue> depth_stencil_clear_value;
 };
 
+struct GLCommandExecuteCommands
+{
+	std::vector<VICommand> secondaries;
+};
+
 struct GLCommandCopyBuffer
 {
 	VIBuffer src;
@@ -645,6 +652,7 @@ struct GLCommand
 		GLCommandBindVertexBuffers bind_vertex_buffers;
 		GLCommandBindIndexBuffer bind_index_buffer;
 		GLCommandBeginPass begin_pass;
+		GLCommandExecuteCommands execute_commands;
 		GLCommandCopyBuffer copy_buffer;
 		GLCommandCopyBufferToImage copy_buffer_to_image;
 		GLCommandCopyImage copy_image;
@@ -753,6 +761,7 @@ static void gl_cmd_execute_bind_vertex_buffers(VIDevice device, GLCommand* glcmd
 static void gl_cmd_execute_bind_index_buffer(VIDevice device, GLCommand* glcmd);
 static void gl_cmd_execute_begin_pass(VIDevice device, GLCommand* glcmd);
 static void gl_cmd_execute_end_pass(VIDevice device, GLCommand* glcmd);
+static void gl_cmd_execute_execute_commands(VIDevice device, GLCommand* glcmd);
 static void gl_cmd_execute_copy_buffer(VIDevice device, GLCommand* glcmd);
 static void gl_cmd_execute_copy_buffer_to_image(VIDevice device, GLCommand* glcmd);
 static void gl_cmd_execute_copy_image(VIDevice device, GLCommand* glcmd);
@@ -832,6 +841,7 @@ static void (*gl_cmd_execute_table[GL_COMMAND_TYPE_ENUM_COUNT])(VIDevice, GLComm
 	gl_cmd_execute_bind_index_buffer,
 	gl_cmd_execute_begin_pass,
 	gl_cmd_execute_end_pass,
+	gl_cmd_execute_execute_commands,
 	gl_cmd_execute_copy_buffer,
 	gl_cmd_execute_copy_buffer_to_image,
 	gl_cmd_execute_copy_image,
@@ -2444,6 +2454,9 @@ static void gl_reset_command(VIDevice device, VICommand cmd)
 		case GL_COMMAND_TYPE_BEGIN_PASS:
 			glcmd->begin_pass.~GLCommandBeginPass();
 			break;
+		case GL_COMMAND_TYPE_EXECUTE_COMMANDS:
+			glcmd->execute_commands.~GLCommandExecuteCommands();
+			break;
 		case GL_COMMAND_TYPE_COPY_BUFFER:
 			glcmd->copy_buffer.~GLCommandCopyBuffer();
 			break;
@@ -2896,6 +2909,16 @@ static void gl_cmd_execute_end_pass(VIDevice device, GLCommand* glcmd)
 	VI_ASSERT(glcmd->type == GL_COMMAND_TYPE_END_PASS);
 
 	device->gl.active_framebuffer = nullptr;
+}
+
+static void gl_cmd_execute_execute_commands(VIDevice device, GLCommand* glcmd)
+{
+	VI_ASSERT(glcmd->type == GL_COMMAND_TYPE_EXECUTE_COMMANDS);
+
+	for (VICommand secondary : glcmd->execute_commands.secondaries)
+	{
+		gl_cmd_execute(device, secondary);
+	}
 }
 
 static void gl_cmd_execute_copy_buffer(VIDevice device, GLCommand* glcmd)
@@ -4758,6 +4781,9 @@ void vi_destroy_pipeline_layout(VIDevice device, VIPipelineLayout layout)
 
 VIPipeline vi_create_pipeline(VIDevice device, const VIPipelineInfo* info)
 {
+	VI_ASSERT(info->pass);
+	VI_ASSERT(info->layout);
+
 	VIPipeline pipeline = (VIPipeline)vi_malloc(sizeof(VIPipelineObj));
 	new (pipeline) VIPipelineObj();
 	pipeline->device = device;
@@ -5098,10 +5124,11 @@ void vi_destroy_command_pool(VIDevice device, VICommandPool pool)
 
 VICommand vi_allocate_primary_command(VIDevice device, VICommandPool pool)
 {
-	VIVulkan* vk = &device->vk;
 	VICommand cmd = (VICommand)vi_malloc(sizeof(VICommandObj));
 	new (cmd)VICommandObj();
 	cmd->device = device;
+	cmd->pool = pool;
+	cmd->is_primary = true;
 
 	if (device->backend == VI_BACKEND_OPENGL)
 	{
@@ -5109,8 +5136,29 @@ VICommand vi_allocate_primary_command(VIDevice device, VICommandPool pool)
 		return cmd;
 	}
 
-	cmd->pool = pool;
+	VIVulkan* vk = &device->vk;
+
 	vk_alloc_cmd_buffer(vk, cmd, pool->vk_handle, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+	return cmd;
+}
+
+VICommand vi_allocate_secondary_command(VIDevice device, VICommandPool pool)
+{
+	VICommand cmd = (VICommand)vi_malloc(sizeof(VICommandObj));
+	new (cmd)VICommandObj();
+	cmd->device = device;
+	cmd->pool = pool;
+	cmd->is_primary = false;
+
+	if (device->backend == VI_BACKEND_OPENGL)
+	{
+		gl_alloc_cmd_buffer(device, cmd);
+		return cmd;
+	}
+
+	VIVulkan* vk = &device->vk;
+
+	vk_alloc_cmd_buffer(vk, cmd, pool->vk_handle, VK_COMMAND_BUFFER_LEVEL_SECONDARY);
 	return cmd;
 }
 
@@ -5368,7 +5416,7 @@ void vi_buffer_unmap(VIBuffer buffer)
 	vmaUnmapMemory(device->vk.vma, buffer->vk.alloc);
 }
 
-void vi_reset_command(VICommand cmd)
+void vi_command_reset(VICommand cmd)
 {
 	VIDevice device = cmd->device;
 
@@ -5383,7 +5431,7 @@ void vi_reset_command(VICommand cmd)
 	VK_CHECK(vkResetCommandBuffer(cmd->vk.handle, 0));
 }
 
-void vi_begin_command(VICommand cmd, VkCommandBufferUsageFlags flags)
+void vi_command_begin(VICommand cmd, VkCommandBufferUsageFlags flags, const VICommandInheritanceInfo* inheritance)
 {
 	if (cmd->device->backend == VI_BACKEND_OPENGL)
 	{
@@ -5391,16 +5439,26 @@ void vi_begin_command(VICommand cmd, VkCommandBufferUsageFlags flags)
 		return;
 	}
 
+	VkCommandBufferInheritanceInfo inheritanceI{};
+
+	if (inheritance)
+	{
+		inheritanceI.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+		inheritanceI.subpass = inheritance->subpass;
+		inheritanceI.renderPass = inheritance->pass ? inheritance->pass->vk.handle : VK_NULL_HANDLE;
+		inheritanceI.framebuffer = inheritance->framebuffer ? inheritance->framebuffer->vk.handle : VK_NULL_HANDLE;
+	}
+
 	VkCommandBufferBeginInfo bufferBI;
 	bufferBI.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	bufferBI.pNext = NULL;
-	bufferBI.pInheritanceInfo = NULL;
+	bufferBI.pInheritanceInfo = &inheritanceI;
 	bufferBI.flags = flags;
 
 	VK_CHECK(vkBeginCommandBuffer(cmd->vk.handle, &bufferBI));
 }
 
-void vi_end_command(VICommand cmd)
+void vi_command_end(VICommand cmd)
 {
 	if (cmd->device->backend == VI_BACKEND_OPENGL)
 		return;
@@ -5572,6 +5630,10 @@ void vi_cmd_begin_pass(VICommand cmd, const VIPassBeginInfo* info)
 		vk_clear_values.push_back(*info->depth_stencil_clear_value);
 	}
 
+	VkSubpassContents contents = info->contents == VI_SUBPASS_CONTENTS_SECONDARY ?
+		VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS :
+		VK_SUBPASS_CONTENTS_INLINE;
+
 	VkRenderPassBeginInfo passBI;
 	passBI.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	passBI.pNext = nullptr;
@@ -5581,7 +5643,7 @@ void vi_cmd_begin_pass(VICommand cmd, const VIPassBeginInfo* info)
 	passBI.renderPass = info->pass->vk.handle;
 	passBI.framebuffer = info->framebuffer->vk.handle;
 
-	vkCmdBeginRenderPass(cmd->vk.handle, &passBI, VK_SUBPASS_CONTENTS_INLINE);
+	vkCmdBeginRenderPass(cmd->vk.handle, &passBI, contents);
 }
 
 void vi_cmd_end_pass(VICommand cmd)
@@ -5593,6 +5655,25 @@ void vi_cmd_end_pass(VICommand cmd)
 	}
 
 	vkCmdEndRenderPass(cmd->vk.handle);
+}
+
+void vi_cmd_execute_commands(VICommand cmd, uint32_t secondary_command_count, const VICommand* secondary_commands)
+{
+	if (cmd->device->backend == VI_BACKEND_OPENGL)
+	{
+		GLCommand* glcmd = gl_append_command(cmd, GL_COMMAND_TYPE_EXECUTE_COMMANDS);
+		new (&glcmd->execute_commands)GLCommandExecuteCommands();
+		glcmd->execute_commands.secondaries.resize(secondary_command_count);
+		for (uint32_t i = 0; i < secondary_command_count; i++)
+			glcmd->execute_commands.secondaries[i] = secondary_commands[i];
+		return;
+	}
+
+	std::vector<VkCommandBuffer> secondaries(secondary_command_count);
+	for (uint32_t i = 0; i < secondary_command_count; i++)
+		secondaries[i] = secondary_commands[i]->vk.handle;
+
+	vkCmdExecuteCommands(cmd->vk.handle, (uint32_t)secondaries.size(), secondaries.data());
 }
 
 void vi_cmd_bind_graphics_pipeline(VICommand cmd, VIPipeline pipeline)

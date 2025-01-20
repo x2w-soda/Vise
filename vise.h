@@ -47,6 +47,7 @@ struct VISubmitInfo;
 struct VIPassInfo;
 struct VIPassBeginInfo;
 struct VIModuleInfo;
+struct VICommandInheritanceInfo;
 struct VISetPoolInfo;
 struct VISetLayoutInfo;
 struct VISetUpdateInfo;
@@ -57,6 +58,7 @@ struct VIFramebufferInfo;
 struct VIBufferInfo;
 struct VIImageInfo;
 struct VIDrawInfo;
+struct VIDrawIndexedInfo;
 struct VIPhysicalDevice;
 
 enum VIBackend
@@ -226,6 +228,12 @@ struct VIPhysicalDevice
 	std::vector<VkPresentModeKHR> present_modes;
 };
 
+enum VISubpassContents
+{
+	VI_SUBPASS_CONTENTS_INLINE,
+	VI_SUBPASS_CONTENTS_SECONDARY,
+};
+
 struct VIPassBeginInfo
 {
 	VIPass pass;
@@ -233,6 +241,7 @@ struct VIPassBeginInfo
 	uint32_t color_clear_value_count;
 	VkClearValue* color_clear_values;
 	VkClearValue* depth_stencil_clear_value;
+	VISubpassContents contents = VI_SUBPASS_CONTENTS_INLINE;
 };
 
 struct VISubmitInfo
@@ -324,6 +333,13 @@ struct VISetUpdateInfo
 	uint32_t binding_index;
 	VIBuffer buffer = VI_NULL;
 	VIImage image = VI_NULL;
+};
+
+struct VICommandInheritanceInfo
+{
+	VIFramebuffer framebuffer;
+	VIPass pass;
+	uint32_t subpass;
 };
 
 struct VIVertexAttribute
@@ -608,6 +624,7 @@ VI_API void vi_destroy_framebuffer(VIDevice device, VIFramebuffer framebuffer);
 VI_API VICommandPool vi_create_command_pool(VIDevice device, uint32_t family_idx, VkCommandPoolCreateFlags flags);
 VI_API void vi_destroy_command_pool(VIDevice device, VICommandPool pool);
 VI_API VICommand vi_allocate_primary_command(VIDevice device, VICommandPool pool);
+VI_API VICommand vi_allocate_secondary_command(VIDevice device, VICommandPool pool);
 VI_API void vi_free_command(VIDevice device, VICommand cmd);
 
 VI_API void vi_device_wait_idle(VIDevice device);
@@ -632,9 +649,9 @@ VI_API void vi_buffer_map_flush(VIBuffer buffer, uint32_t offset, uint32_t size)
 VI_API void vi_buffer_map_invalidate(VIBuffer buffer, uint32_t offset, uint32_t size);
 VI_API void vi_buffer_unmap(VIBuffer buffer);
 
-VI_API void vi_reset_command(VICommand cmd);
-VI_API void vi_begin_command(VICommand cmd, VkCommandBufferUsageFlags flags);
-VI_API void vi_end_command(VICommand cmd);
+VI_API void vi_command_reset(VICommand cmd);
+VI_API void vi_command_begin(VICommand cmd, VkCommandBufferUsageFlags flags, const VICommandInheritanceInfo* inheritance);
+VI_API void vi_command_end(VICommand cmd);
 VI_API void vi_cmd_opengl_callback(VICommand cmd, void (*callback)(void* data), void* data);
 VI_API void vi_cmd_copy_buffer(VICommand cmd, VIBuffer src, VIBuffer dst, uint32_t region_count, const VkBufferCopy* regions);
 VI_API void vi_cmd_copy_buffer_to_image(VICommand cmd, VIBuffer buffer, VIImage image, VkImageLayout layout, uint32_t region_count, const VkBufferImageCopy* regions);
@@ -642,6 +659,7 @@ VI_API void vi_cmd_copy_image(VICommand cmd, VIImage src, VkImageLayout src_layo
 VI_API void vi_cmd_copy_image_to_buffer(VICommand cmd, VIImage image, VkImageLayout layout, VIBuffer buffer, uint32_t region_count, const VkBufferImageCopy* regions);
 VI_API void vi_cmd_begin_pass(VICommand cmd, const VIPassBeginInfo* info);
 VI_API void vi_cmd_end_pass(VICommand cmd);
+VI_API void vi_cmd_execute_commands(VICommand cmd, uint32_t secondary_command_count, const VICommand* secondary_commands);
 VI_API void vi_cmd_bind_graphics_pipeline(VICommand cmd, VIPipeline pipeline);
 VI_API void vi_cmd_bind_compute_pipeline(VICommand cmd, VIComputePipeline pipeline);
 VI_API void vi_cmd_dispatch(VICommand cmd, uint32_t workgroup_x, uint32_t workgroup_y, uint32_t workgroup_z);

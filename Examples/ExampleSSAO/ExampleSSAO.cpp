@@ -681,7 +681,7 @@ void ExampleSSAO::Run()
 		ubo.ProjMat = mCamera.GetProjMat();
 		vi_buffer_map_write(frame->ubo, 0, sizeof(ubo), &ubo);
 
-		vi_begin_command(cmd, 0);
+		vi_command_begin(cmd, 0, nullptr);
 
 		std::array<VkClearValue, 3> colorClearValues;
 		colorClearValues[0] = MakeClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -818,7 +818,7 @@ void ExampleSSAO::Run()
 			Application::ImGuiRender(cmd);
 		}
 		vi_cmd_end_pass(cmd);
-		vi_end_command(cmd);
+		vi_command_end(cmd);
 
 		VkPipelineStageFlags stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		VISubmitInfo submitI;

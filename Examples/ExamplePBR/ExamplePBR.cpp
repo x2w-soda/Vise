@@ -811,7 +811,7 @@ void ExamplePBR::Run()
 		VIFramebuffer fb = vi_device_get_swapchain_framebuffer(mDevice, frame_idx);
 		FrameData* frame = mFrames.data() + frame_idx;
 
-		vi_begin_command(frame->cmd, 0);
+		vi_command_begin(frame->cmd, 0, nullptr);
 
 		VkClearValue clear[2];
 		clear[0] = MakeClearDepthStencil(1.0f, 0.0f);
@@ -867,7 +867,7 @@ void ExamplePBR::Run()
 			Application::ImGuiRender(frame->cmd);
 		}
 		vi_cmd_end_pass(frame->cmd);
-		vi_end_command(frame->cmd);
+		vi_command_end(frame->cmd);
 
 		UpdateUBO();
 		vi_buffer_map_write(frame->scene_ubo, 0, sizeof(mSceneUBO), &mSceneUBO);
@@ -1013,7 +1013,7 @@ void ExamplePBR::BakeCubemap(VIImage targetCubemap, uint32_t cubemapDim, VIPipel
 
 	VICommand cmd = vi_allocate_primary_command(mDevice, mCmdPool);
 
-	vi_begin_command(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	vi_command_begin(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr);
 
 	CmdImageLayoutTransition(cmd, targetCubemap, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 6, mipCount);
 
@@ -1083,7 +1083,7 @@ void ExamplePBR::BakeCubemap(VIImage targetCubemap, uint32_t cubemapDim, VIPipel
 	}
 	CmdImageLayoutTransition(cmd, targetCubemap, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 6, mipCount);
 
-	vi_end_command(cmd);
+	vi_command_end(cmd);
 
 	VIFence fence = vi_create_fence(mDevice, 0);
 	VIQueue queue = vi_device_get_graphics_queue(mDevice);
@@ -1101,7 +1101,7 @@ void ExamplePBR::BakeBRDFLUT()
 {
 	VICommand cmd = vi_allocate_primary_command(mDevice, mCmdPool);
 
-	vi_begin_command(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	vi_command_begin(cmd, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr);
 
 	VkClearValue clearColor = MakeClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 	VIPassBeginInfo passBI;
@@ -1128,7 +1128,7 @@ void ExamplePBR::BakeBRDFLUT()
 	vi_cmd_draw(cmd, &drawI);
 
 	vi_cmd_end_pass(cmd);
-	vi_end_command(cmd);
+	vi_command_end(cmd);
 
 	VIFence fence = vi_create_fence(mDevice, 0);
 	VIQueue queue = vi_device_get_graphics_queue(mDevice);
