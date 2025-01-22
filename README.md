@@ -58,7 +58,6 @@ Vise is not possible without the following libraries.
 | Library     | Usage                    | License    |
 | ----------- | ------------------------ | ---------- |
 | Glad        | OpenGL Loader            | MIT        |
-| Volk        | Vulkan Loader            | MIT        |
 | VMA         | Vulkan Memory Allocation | MIT        |
 | SPIRV cross | Vise GLSL Compilation    | Apache 2.0 |
 | glslang     | Vise GLSL Compilation    | multiple*  |

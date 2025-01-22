@@ -35,9 +35,6 @@ target_include_directories(tinygltf PRIVATE
 	${CMAKE_CURRENT_SOURCE_DIR}/../Extern/stb
 )
 
-# for the imgui translation unit:
-# - Vise uses volk under the hood, requiring IMGUI_IMPL_VULKAN_USE_VOLK
-# - make <volk.h> visible to imgui by adding include directory /Extern/volk
 add_library(imgui STATIC
 	${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
 	${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.h
@@ -59,11 +56,6 @@ target_include_directories(imgui PRIVATE
 	${imgui_SOURCE_DIR}/backends
 	${glfw_SOURCE_DIR}/include
 	${Vulkan_INCLUDE_DIR}
-	${CMAKE_CURRENT_SOURCE_DIR}/../Extern/volk
-)
-
-target_compile_definitions(imgui PRIVATE
-	IMGUI_IMPL_VULKAN_USE_VOLK
 )
 
 # example application framework to use Vise
@@ -87,11 +79,6 @@ target_include_directories(vise_application PRIVATE
 	${imgui_SOURCE_DIR}/backends
 	${CMAKE_CURRENT_SOURCE_DIR}/../Extern/tinygltf
 	${CMAKE_CURRENT_SOURCE_DIR}/../Extern/stb
-)
-
-# we will include <imgui_impl_vulkan.h> in Application.cpp
-target_compile_definitions(vise_application PRIVATE
-	IMGUI_IMPL_VULKAN_USE_VOLK
 )
 
 target_link_libraries(vise_application PRIVATE vise stb tinygltf imgui glfw)

@@ -9,10 +9,7 @@
 #endif
 
 #include <vector>
-
-// Vise uses some Vulkan structs and uses Volk as meta loader.
-// Make sure Extern/volk directory is in your include path.
-#include <volk.h>
+#include <vulkan/vulkan.h>
 
 #ifndef VI_API
 #define VI_API extern

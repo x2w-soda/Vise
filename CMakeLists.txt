@@ -63,14 +63,11 @@ set(VISE_LIB
   ${CMAKE_CURRENT_SOURCE_DIR}/vise.h
   ${CMAKE_CURRENT_SOURCE_DIR}/vise.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/Extern/glad/glad/glad.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/Extern/volk/volk.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/Extern/volk/volk.h
 )
 
 set(VISE_INCLUDE_DIRS
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/Extern/glad
-  ${CMAKE_CURRENT_SOURCE_DIR}/Extern/volk
   ${Vulkan_INCLUDE_DIR}
   ${glfw_SOURCE_DIR}/include
   ${vma_SOURCE_DIR}/include
@@ -86,7 +83,7 @@ endif()
 
 add_library(vise STATIC ${VISE_LIB})
 target_include_directories(vise PRIVATE ${VISE_INCLUDE_DIRS})
-target_link_libraries(vise ${VISE_VULKAN_SDK_LIBS} glfw)
+target_link_libraries(vise ${VISE_VULKAN_SDK_LIBS} ${Vulkan_LIBRARIES} glfw)
 add_compile_definitions(${VISE_COMPILE_DEFINITIONS})
 
 if (VISE_BUILD_EXAMPLES_AND_TESTS)

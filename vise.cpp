@@ -13,7 +13,6 @@
 #include <spirv_cross/spirv_glsl.hpp>
 
 #include <vise.h>
-#include <volk.h>
 #include <glad/glad.h>
 
 #if !defined(VI_BUILD_RELEASE) && !defined(NDEBUG)
@@ -21,9 +20,6 @@
 #else
 # define VI_BUILD_RELEASE
 #endif
-
-#define VMA_IMPLEMENTATION
-#include <vk_mem_alloc.h>
 
 #ifdef VI_PLATFORM_WIN32
  #define GLFW_EXPOSE_NATIVE_WIN32
@@ -95,6 +91,10 @@
 #define VI_SHADER_GLSL_VERSION        460
 #define VI_SHADER_ENTRY_POINT         "main"
 #define VI_GL_COMMAND_LIST_CAPACITY   16
+
+#define VMA_VULKAN_VERSION 1002000
+#define VMA_IMPLEMENTATION
+#include <vk_mem_alloc.h>
 
 // Normalize NDC Handedness:
 //   OpenGL NDC is left-handed while Vulkan NDC is right-handed,
@@ -848,6 +848,11 @@ static void (*gl_cmd_execute_table[GL_COMMAND_TYPE_ENUM_COUNT])(VIDevice, GLComm
 	gl_cmd_execute_copy_image_to_buffer,
 	gl_cmd_execute_dispatch,
 };
+
+struct VIProcTable
+{
+	PFN_vkCmdSetFrontFaceEXT vkCmdSetFrontFaceEXT;
+} vi_proc;
 
 struct VIModuleTypeEntry
 {
@@ -3762,9 +3767,9 @@ VIDevice vi_create_device_vk(const VIDeviceInfo* info, VIDeviceLimits* limits)
 {
 	VI_ASSERT(info->desired_swapchain_framebuffer_count > 0);
 
-	VK_CHECK(volkInitialize());
+	uint32_t loader_version;
+	vkEnumerateInstanceVersion(&loader_version);
 
-	uint32_t loader_version = volkGetInstanceVersion();
 	int major = VK_VERSION_MAJOR(loader_version);
 	int minor = VK_VERSION_MINOR(loader_version);
 	int patch = VK_VERSION_PATCH(loader_version);
@@ -3791,11 +3796,11 @@ VIDevice vi_create_device_vk(const VIDeviceInfo* info, VIDeviceLimits* limits)
 	// create Instance, Surface, and a Device
 	{
 		vk_create_instance(vk, info->vulkan.enable_validation_layers);
-		volkLoadInstance(vk->instance);
+
+		vi_proc.vkCmdSetFrontFaceEXT = (PFN_vkCmdSetFrontFaceEXT)vkGetInstanceProcAddr(vk->instance, "vkCmdSetFrontFaceEXT");
 
 		vk_create_surface(vk);
 		vk_create_device(vk, device, info);
-		volkLoadDevice(vk->device);
 	}
 
 	// VMA configuration
@@ -5696,7 +5701,7 @@ void vi_cmd_bind_graphics_pipeline(VICommand cmd, VIPipeline pipeline)
 	if (flip_vk_front_face)
 		front_face = (front_face == VK_FRONT_FACE_CLOCKWISE) ? VK_FRONT_FACE_COUNTER_CLOCKWISE : VK_FRONT_FACE_CLOCKWISE;
 
-	vkCmdSetFrontFaceEXT(cmd->vk.handle, front_face);
+	vi_proc.vkCmdSetFrontFaceEXT(cmd->vk.handle, front_face);
 }
 
 void vi_cmd_bind_compute_pipeline(VICommand cmd, VIComputePipeline pipeline)
