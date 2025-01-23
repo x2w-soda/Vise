@@ -11,6 +11,17 @@
 #include <vector>
 #include <vulkan/vulkan.h>
 
+#define VI_VERSION_MAJOR       0
+#define VI_VERSION_MINOR       0
+#define VI_VERSION_PATCH       0
+
+#define VI_VK_API_VERSION      VK_API_VERSION_1_2
+
+// for users that wish to integrate VMA for Vulkan resource allocation:
+// #define VMA_VULKAN_VERSION VI_VMA_VULKAN_VERSION
+// before including <vk_mem_alloc.h>
+#define VI_VMA_VULKAN_VERSION  1002000
+
 #ifndef VI_API
 #define VI_API extern
 #endif
@@ -211,10 +222,24 @@ struct VIDeviceProfileGL
 	const char* version;                 // GL_VERSION
 };
 
+struct VIAllocatorVK
+{
+	void* user;
+	void (*create_buffer)(void* user, uint32_t id, VkBuffer* buffer, const VkBufferCreateInfo* create_info, VkMemoryPropertyFlags properties);
+	void (*destroy_buffer)(void* user, uint32_t id, VkBuffer buffer);
+	void (*buffer_map)(void* user, uint32_t id, VkBuffer buffer, void**);
+	void (*buffer_unmap)(void* user, uint32_t id, VkBuffer buffer);
+	void (*buffer_map_flush)(void* user, uint32_t id, VkBuffer buffer, uint32_t offset, uint32_t size);
+	void (*buffer_map_invalidate)(void* user, uint32_t id, VkBuffer buffer, uint32_t offset, uint32_t size);
+	void (*create_image)(void* user, uint32_t id, VkImage* image, const VkImageCreateInfo* create_info, VkMemoryPropertyFlags properties);
+	void (*destroy_image)(void* user, uint32_t id, VkImage image);
+};
+
 struct VIPhysicalDevice
 {
 	VkPhysicalDevice handle;
 	VkPhysicalDeviceProperties device_props;
+	VkPhysicalDeviceMemoryProperties device_memory_props;
 	VkSurfaceKHR surface;
 	VkSurfaceCapabilitiesKHR surface_caps;
 	VkPhysicalDeviceFeatures2 features;
@@ -625,6 +650,7 @@ VI_API VICommand vi_allocate_secondary_command(VIDevice device, VICommandPool po
 VI_API void vi_free_command(VIDevice device, VICommand cmd);
 
 VI_API void vi_device_wait_idle(VIDevice device);
+VI_API void vi_device_set_allocator_vk(VIDevice device, const VIAllocatorVK* allocator);
 VI_API const VIDeviceProfileVK* vi_device_get_profile_vk(VIDevice device);
 VI_API const VIDeviceProfileGL* vi_device_get_profile_gl(VIDevice device);
 VI_API const VIPhysicalDevice* vi_device_get_physical_device(VIDevice device); // TODO: remove? common limits?

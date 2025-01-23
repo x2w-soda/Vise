@@ -4,9 +4,11 @@
 #include <cmath>
 #include <cstdint>
 #include <vector>
-#include <vise.h>
+#include <algorithm>
 #include <glm/vec3.hpp>
 #include <glm/mat4x4.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <vise.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -107,7 +109,7 @@ public:
 	}
 
 	float fov = 30.0f;
-	float aspect = APP_WINDOW_ASPECT_RATIO;
+	float aspect;
 
 private:
 	glm::vec3 mDirection;

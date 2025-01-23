@@ -49,16 +49,6 @@ if(NOT glfw_POPULATED)
 endif()
 add_subdirectory(${glfw_SOURCE_DIR} glfw_build)
 
-# FETCH VMA
-# - bundled along Vise
-
-FetchContent_Declare(
-  vma
-  GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
-  GIT_TAG v3.0.1
-)
-FetchContent_MakeAvailable(vma)
-
 set(VISE_LIB
   ${CMAKE_CURRENT_SOURCE_DIR}/vise.h
   ${CMAKE_CURRENT_SOURCE_DIR}/vise.cpp
@@ -70,7 +60,6 @@ set(VISE_INCLUDE_DIRS
   ${CMAKE_CURRENT_SOURCE_DIR}/Extern/glad
   ${Vulkan_INCLUDE_DIR}
   ${glfw_SOURCE_DIR}/include
-  ${vma_SOURCE_DIR}/include
 )
 
 set(VISE_LINK_DIRS

@@ -19,6 +19,17 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(imgui)
 
+# FETCH VMA
+# - not shipped with Vise
+# - the example Application shows how to integrate VMA with Vise
+
+FetchContent_Declare(
+  vma
+  GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
+  GIT_TAG v3.0.1
+)
+FetchContent_MakeAvailable(vma)
+
 add_library(stb STATIC
 	${CMAKE_CURRENT_SOURCE_DIR}/../Extern/stb/stb.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/../Extern/stb/stb_image.h
@@ -62,6 +73,7 @@ target_include_directories(imgui PRIVATE
 # - uses GLFW as window backend
 # - uses stb for image loading and saving
 # - uses Dear ImGui for example demo
+# - uses VMA for vulkan memory management
 
 add_library(vise_application
 	${CMAKE_CURRENT_SOURCE_DIR}/Application/Application.h
@@ -75,6 +87,7 @@ add_library(vise_application
 target_include_directories(vise_application PRIVATE
 	${VISE_INCLUDE_DIRS}
 	${glm_SOURCE_DIR}
+	${vma_SOURCE_DIR}/include
 	${imgui_SOURCE_DIR}
 	${imgui_SOURCE_DIR}/backends
 	${CMAKE_CURRENT_SOURCE_DIR}/../Extern/tinygltf

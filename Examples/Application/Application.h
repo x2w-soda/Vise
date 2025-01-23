@@ -1,11 +1,13 @@
 #pragma once
 
 #include <algorithm>
-#include <vise.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <GLFW/glfw3.h>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
+#include <vise.h>
+
+#include "Common.h"
 
 #define APP_DESIRED_FRAMES_IN_FLIGHT   2
 #define APP_WINDOW_WIDTH               1600
@@ -76,6 +78,8 @@ VIImage CreateImageStaged(VIDevice device, const VIImageInfo* info, const void* 
 // image layout transition via image memory barrier
 void CmdImageLayoutTransition(VICommand cmd, VIImage image, VkImageLayout old_layout, VkImageLayout new_layout, uint32_t layers = 1, uint32_t levels = 1);
 
+class VMAAllocator;
+
 class Application
 {
 public:
@@ -121,6 +125,7 @@ protected:
 	VIDeviceLimits mDeviceLimits;
 	VIBackend mBackend;
 	Camera mCamera;
+	VMAAllocator* mVMAAllocator = nullptr;
 
 private:
 	void ImGuiOpenGLInit();

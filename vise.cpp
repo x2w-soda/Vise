@@ -86,15 +86,10 @@
 
 #define VI_ARR_SIZE(ARR) (sizeof(ARR) / sizeof(*ARR))
 
-#define VI_VK_API_VERSION             VK_API_VERSION_1_2
 #define VI_VK_GLSLANG_VERSION         glslang::EShTargetVulkan_1_2
 #define VI_SHADER_GLSL_VERSION        460
 #define VI_SHADER_ENTRY_POINT         "main"
 #define VI_GL_COMMAND_LIST_CAPACITY   16
-
-#define VMA_VULKAN_VERSION 1002000
-#define VMA_IMPLEMENTATION
-#include <vk_mem_alloc.h>
 
 // Normalize NDC Handedness:
 //   OpenGL NDC is left-handed while Vulkan NDC is right-handed,
@@ -131,11 +126,21 @@ enum VIImageFlagBits
 
 struct VIObject
 {
-	VIObject() = default;
+	VIObject()
+	{
+		id = ++id_counter;
+	}
+
 	~VIObject() = default;
 
 	VIDevice device;
+	uint32_t id;
+
+	static uint32_t id_counter;
 };
+
+// NOTE: not atomic, resource creation and destruction should happen on single thread only
+uint32_t VIObject::id_counter = 0;
 
 struct VIPassObj : VIObject
 {
@@ -231,7 +236,7 @@ struct VIBufferObj : VIObject
 		struct
 		{
 			VkBuffer handle;
-			VmaAllocation alloc;
+			VkDeviceMemory memory;
 		} vk;
 
 		struct
@@ -256,7 +261,7 @@ struct VIImageObj : VIObject
 			VkImage handle;
 			VkImageView view_handle;
 			VkSampler sampler_handle;
-			VmaAllocation alloc;
+			VkDeviceMemory memory;
 		} vk;
 
 		struct
@@ -470,7 +475,6 @@ struct VIVulkan
 {
 	VIDevice vi_device;
 	VkDevice device;
-	VmaAllocator vma;
 	VIFrame* frames;
 	uint32_t frame_idx;
 	uint32_t frames_in_flight;
@@ -482,11 +486,14 @@ struct VIVulkan
 	std::vector<VIPhysicalDevice> pdevices;
 	VIPhysicalDevice* pdevice_chosen;
 	VIDeviceProfileVK profile;
+	VIAllocatorVK allocator;
 	VkInstance instance;
 	VkSurfaceKHR surface;
 	VkPhysicalDevice pdevice;
 	VICommandPoolObj cmd_pool_graphics;
 	bool pass_uses_swapchain_framebuffer;
+
+	void (*configure_swapchain)(const VIPhysicalDevice* pdevice, void* window, VISwapchainInfo* out_info);
 
 	struct
 	{
@@ -699,6 +706,8 @@ static void vk_create_device(VIVulkan* vk, VIDevice device, const VIDeviceInfo* 
 static void vk_destroy_device(VIVulkan* vk);
 static void vk_create_swapchain(VIVulkan* vk, const VISwapchainInfo* info, uint32_t min_image_count);
 static void vk_destroy_swapchain(VIVulkan* vk);
+static void vk_create_buffer(VIVulkan* vk, VIBuffer buffer, const VkBufferCreateInfo* info, const VkMemoryPropertyFlags& properties);
+static void vk_destroy_buffer(VIVulkan* vk, VIBuffer buffer);
 static void vk_create_image(VIVulkan* vk, VIImage image, const VkImageCreateInfo* info, const VkMemoryPropertyFlags& properties);
 static void vk_destroy_image(VIVulkan* vk, VIImage image);
 static void vk_create_image_view(VIVulkan* vk, VIImage image, const VkImageViewCreateInfo* info);
@@ -710,7 +719,12 @@ static void vk_destroy_framebuffer(VIVulkan* vk, VIFramebuffer fb);
 static void vk_alloc_cmd_buffer(VIVulkan* vk, VICommand cmd, VkCommandPool pool, VkCommandBufferLevel level);
 static void vk_free_cmd_buffer(VIVulkan* vk, VICommand cmd);
 static bool vk_has_format_features(VIVulkan* vk, VkFormat format, VkImageTiling tiling, VkFormatFeatureFlags features);
+static uint32_t vk_get_memory_type_index(const VIPhysicalDevice* pdevice, uint32_t type_bits, VkMemoryPropertyFlags properties);
 static void vk_default_configure_swapchain(const VIPhysicalDevice* device, void* window, VISwapchainInfo* out_info);
+static void vk_default_create_buffer(VIBuffer buffer, const VkBufferCreateInfo* info, VkMemoryPropertyFlags properties);
+static void vk_default_destroy_buffer(VIBuffer buffer);
+static void vk_default_create_image(VIImage image, const VkImageCreateInfo* info, VkMemoryPropertyFlags properties);
+static void vk_default_destroy_image(VIImage image);
 
 static void gl_device_present_frame(VIDevice device);
 static void gl_device_append_submission(VIDevice device, const VISubmitInfo* submit);
@@ -1279,7 +1293,9 @@ static void vk_create_device(VIVulkan* vk, VIDevice device, const VIDeviceInfo* 
 	{
 		VIPhysicalDevice* pdevice = vk->pdevices.data() + i;
 		VkPhysicalDeviceProperties* props = &pdevice->device_props;
+		VkPhysicalDeviceMemoryProperties* memory_props = &pdevice->device_memory_props;
 		vkGetPhysicalDeviceProperties(handles[i], props);
+		vkGetPhysicalDeviceMemoryProperties(handles[i], memory_props);
 
 		pdevice->handle = handles[i];
 		pdevice->surface = vk->surface;
@@ -1471,7 +1487,16 @@ static void vk_create_swapchain(VIVulkan* vk, const VISwapchainInfo* info, uint3
 	vk->swapchain.image_format = info->image_format;
 	vk->swapchain.depth_stencil_format = info->depth_stencil_format;
 	if (info->depth_stencil_format != VK_FORMAT_UNDEFINED)
+	{
 		vk->swapchain.depth_stencils.resize(image_count);
+		for (uint32_t i = 0; i < image_count; i++)
+		{
+			VIImage depthStencil = vk->swapchain.depth_stencils.data() + i;
+			new (depthStencil) VIImageObj();
+			depthStencil->device = vk->vi_device;
+			depthStencil->flags = 0;
+		}
+	}
 
 	for (uint32_t i = 0; i < vk->swapchain.image_handles.size(); i++)
 	{
@@ -1486,6 +1511,8 @@ static void vk_create_swapchain(VIVulkan* vk, const VISwapchainInfo* info, uint3
 		// swapchain framebuffer depth stencil attachment
 		if (info->depth_stencil_format != VK_FORMAT_UNDEFINED)
 		{
+			VIImage depthStencil = vk->swapchain.depth_stencils.data() + i;
+
 			VkImageCreateInfo depthStencilImageCI{};
 			depthStencilImageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 			depthStencilImageCI.extent.width = info->image_extent.width;
@@ -1500,12 +1527,12 @@ static void vk_create_swapchain(VIVulkan* vk, const VISwapchainInfo* info, uint3
 			depthStencilImageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 			depthStencilImageCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 			depthStencilImageCI.samples = VK_SAMPLE_COUNT_1_BIT;
-			vk_create_image(vk, vk->swapchain.depth_stencils.data() + i, &depthStencilImageCI, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+			vk_default_create_image(depthStencil, &depthStencilImageCI, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 			viewCI.image = vk->swapchain.depth_stencils[i].vk.handle;
 			viewCI.format = vk->swapchain.depth_stencil_format;
 			viewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT; // TODO: only if there are stencil bits
-			vk_create_image_view(vk, vk->swapchain.depth_stencils.data() + i, &viewCI);
+			vk_create_image_view(vk, depthStencil, &viewCI);
 		}
 		
 		// swapchain framebuffer color attachment
@@ -1523,34 +1550,63 @@ static void vk_destroy_swapchain(VIVulkan* vk)
 
 	for (uint32_t i = 0; i < vk->swapchain.depth_stencils.size(); i++)
 	{
-		vk_destroy_image_view(vk, vk->swapchain.depth_stencils.data() + i);
-		vk_destroy_image(vk, vk->swapchain.depth_stencils.data() + i);
+		VIImage depthStencil = vk->swapchain.depth_stencils.data() + i;
+
+		vk_destroy_image_view(vk, depthStencil);
+		vk_default_destroy_image(depthStencil);
+		depthStencil->~VIImageObj();
 	}
 
 	vkDestroySwapchainKHR(vk->device, vk->swapchain.handle, nullptr);
 	vk->swapchain.handle = VK_NULL_HANDLE;
 }
 
+static void vk_create_buffer(VIVulkan* vk, VIBuffer buffer, const VkBufferCreateInfo* info, const VkMemoryPropertyFlags& properties)
+{
+	if (vk->allocator.create_buffer)
+	{
+		vk->allocator.create_buffer(vk->allocator.user, buffer->id, &buffer->vk.handle, info, properties);
+		return;
+	}
+
+	vk_default_create_buffer(buffer, info, properties);
+}
+
+static void vk_destroy_buffer(VIVulkan* vk, VIBuffer buffer)
+{
+	if (vk->allocator.destroy_buffer)
+	{
+		vk->allocator.destroy_buffer(vk->allocator.user, buffer->id, buffer->vk.handle);
+		return;
+	}
+
+	vk_default_destroy_buffer(buffer);
+}
+
 static void vk_create_image(VIVulkan* vk, VIImage image, const VkImageCreateInfo* info, const VkMemoryPropertyFlags& properties)
 {
 	image->flags |= VI_IMAGE_FLAG_CREATED_IMAGE_BIT;
 
-	VmaAllocationCreateInfo allocCI = {};
-	allocCI.usage = VMA_MEMORY_USAGE_AUTO;
-	allocCI.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-	allocCI.priority = 1.0f;
-	allocCI.requiredFlags = properties;
-	allocCI.preferredFlags = properties;
-	VK_CHECK(vmaCreateImage(vk->vma, info, &allocCI, &image->vk.handle, &image->vk.alloc, nullptr));
+	if (vk->allocator.create_image)
+	{
+		vk->allocator.create_image(vk->allocator.user, image->id, &image->vk.handle, info, properties);
+		return;
+	}
+
+	vk_default_create_image(image, info, properties);
 }
 
 static void vk_destroy_image(VIVulkan* vk, VIImage image)
 {
 	VI_ASSERT(image->flags & VI_IMAGE_FLAG_CREATED_IMAGE_BIT);
 
-	vmaDestroyImage(vk->vma, image->vk.handle, image->vk.alloc);
-	image->vk.handle = VK_NULL_HANDLE;
-	image->flags &= ~VI_IMAGE_FLAG_CREATED_IMAGE_BIT;
+	if (vk->allocator.destroy_image)
+	{
+		vk->allocator.destroy_image(vk->allocator.user, image->id, image->vk.handle);
+		return;
+	}
+
+	vk_default_destroy_image(image);
 }
 
 static void vk_create_image_view(VIVulkan* vk, VIImage image, const VkImageViewCreateInfo* info)
@@ -1629,7 +1685,7 @@ static void vk_free_cmd_buffer(VIVulkan* vk, VICommand cmd)
 	vkFreeCommandBuffers(vk->device, pool->vk_handle, 1, &cmd->vk.handle);
 }
 
-bool vk_has_format_features(VIVulkan* vk, VkFormat format, VkImageTiling tiling, VkFormatFeatureFlags features)
+static bool vk_has_format_features(VIVulkan* vk, VkFormat format, VkImageTiling tiling, VkFormatFeatureFlags features)
 {
 	VkFormatProperties props;
 	vkGetPhysicalDeviceFormatProperties(vk->pdevice, format, &props);
@@ -1641,6 +1697,21 @@ bool vk_has_format_features(VIVulkan* vk, VkFormat format, VkImageTiling tiling,
 		return true;
 
 	return false;
+}
+
+static uint32_t vk_get_memory_type_index(const VIPhysicalDevice* pdevice, uint32_t type_bits, VkMemoryPropertyFlags properties)
+{
+	const VkPhysicalDeviceMemoryProperties* memory_props = &pdevice->device_memory_props;
+
+	for (uint32_t i = 0; i < memory_props->memoryTypeCount; i++)
+	{
+		if ((type_bits & 1) && (memory_props->memoryTypes[i].propertyFlags & properties) == properties)
+			return i;
+
+		type_bits >>= 1;
+	}
+
+	VI_UNREACHABLE;
 }
 
 static void vk_default_configure_swapchain(const VIPhysicalDevice* pdevice, void* window, VISwapchainInfo* out_info)
@@ -1710,6 +1781,60 @@ static void vk_default_configure_swapchain(const VIPhysicalDevice* pdevice, void
 			}
 		}
 	}
+}
+
+static void vk_default_create_buffer(VIBuffer buffer, const VkBufferCreateInfo* info, VkMemoryPropertyFlags properties)
+{
+	const VIPhysicalDevice* pdevice = buffer->device->vk.pdevice_chosen;
+	VkDevice device = buffer->device->vk.device;
+	VK_CHECK(vkCreateBuffer(device, info, nullptr, &buffer->vk.handle));
+
+	VkMemoryRequirements memoryReq;
+	vkGetBufferMemoryRequirements(device, buffer->vk.handle, &memoryReq);
+
+	VkMemoryAllocateInfo memoryAI{};
+	memoryAI.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memoryAI.pNext = nullptr;
+	memoryAI.allocationSize = memoryReq.size;
+	memoryAI.memoryTypeIndex = vk_get_memory_type_index(pdevice, memoryReq.memoryTypeBits, properties);
+
+	VK_CHECK(vkAllocateMemory(device, &memoryAI, nullptr, &buffer->vk.memory));
+	VK_CHECK(vkBindBufferMemory(device, buffer->vk.handle, buffer->vk.memory, 0));
+}
+
+static void vk_default_destroy_buffer(VIBuffer buffer)
+{
+	VkDevice device = buffer->device->vk.device;
+
+	vkDestroyBuffer(device, buffer->vk.handle, nullptr);
+	vkFreeMemory(device, buffer->vk.memory, nullptr);
+}
+
+static void vk_default_create_image(VIImage image, const VkImageCreateInfo* info, VkMemoryPropertyFlags properties)
+{
+	const VIPhysicalDevice* pdevice = image->device->vk.pdevice_chosen;
+	VkDevice device = image->device->vk.device;
+	VK_CHECK(vkCreateImage(device, info, nullptr, &image->vk.handle));
+
+	VkMemoryRequirements memoryReq;
+	vkGetImageMemoryRequirements(device, image->vk.handle, &memoryReq);
+
+	VkMemoryAllocateInfo memoryAI{};
+	memoryAI.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memoryAI.pNext = nullptr;
+	memoryAI.allocationSize = memoryReq.size;
+	memoryAI.memoryTypeIndex = vk_get_memory_type_index(pdevice, memoryReq.memoryTypeBits, properties);
+
+	VK_CHECK(vkAllocateMemory(device, &memoryAI, nullptr, &image->vk.memory));
+	VK_CHECK(vkBindImageMemory(device, image->vk.handle, image->vk.memory, 0));
+}
+
+static void vk_default_destroy_image(VIImage image)
+{
+	VkDevice device = image->device->vk.device;
+
+	vkDestroyImage(device, image->vk.handle, nullptr);
+	vkFreeMemory(device, image->vk.memory, nullptr);
 }
 
 static void gl_device_present_frame(VIDevice device)
@@ -3767,6 +3892,8 @@ VIDevice vi_create_device_vk(const VIDeviceInfo* info, VIDeviceLimits* limits)
 {
 	VI_ASSERT(info->desired_swapchain_framebuffer_count > 0);
 
+	VIObject::id_counter = 0;
+
 	uint32_t loader_version;
 	vkEnumerateInstanceVersion(&loader_version);
 
@@ -3803,34 +3930,13 @@ VIDevice vi_create_device_vk(const VIDeviceInfo* info, VIDeviceLimits* limits)
 		vk_create_device(vk, device, info);
 	}
 
-	// VMA configuration
-	{
-		VmaVulkanFunctions vma_callbacks{};
-		vma_callbacks.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
-		vma_callbacks.vkGetDeviceProcAddr = vkGetDeviceProcAddr;
-#if VMA_VULKAN_VERSION >= 1003000
-		vma_callbacks.vkGetDeviceBufferMemoryRequirements = vkGetDeviceBufferMemoryRequirements;
-		vma_callbacks.vkGetDeviceImageMemoryRequirements = vkGetDeviceImageMemoryRequirements;
-#endif
-
-		VmaAllocator allocator = nullptr;
-		VmaAllocatorCreateInfo allocator_ci{};
-		allocator_ci.physicalDevice = vk->pdevice_chosen->handle;
-		allocator_ci.device = vk->device;
-		allocator_ci.instance = vk->instance;
-		allocator_ci.pVulkanFunctions = &vma_callbacks;
-		allocator_ci.vulkanApiVersion = VI_VK_API_VERSION;
-		VK_CHECK(vmaCreateAllocator(&allocator_ci, &vk->vma));
-	}
-
 	// create Swapchain, Swapchain-Pass and Swapchain-Framebuffer
 	{
-		void (*configure_swapchain)(const VIPhysicalDevice* pdevice, void* window, VISwapchainInfo* out_info) = info->vulkan.configure_swapchain;
-		if (configure_swapchain == nullptr)
-			configure_swapchain = &vk_default_configure_swapchain;
-
 		VISwapchainInfo swapchainI;
-		configure_swapchain(vk->pdevice_chosen, info->window, &swapchainI);
+		vk->configure_swapchain = info->vulkan.configure_swapchain;
+		if (vk->configure_swapchain == nullptr)
+			vk->configure_swapchain = &vk_default_configure_swapchain;
+		vk->configure_swapchain(vk->pdevice_chosen, info->window, &swapchainI);
 
 		uint32_t surface_min_image_count = vk->pdevice_chosen->surface_caps.minImageCount;
 		uint32_t surface_max_image_count = vk->pdevice_chosen->surface_caps.maxImageCount; // zero if there is no actual limit
@@ -3980,6 +4086,8 @@ VIDevice vi_create_device_vk(const VIDeviceInfo* info, VIDeviceLimits* limits)
 
 VIDevice vi_create_device_gl(const VIDeviceInfo* info, VIDeviceLimits* limits)
 {
+	VIObject::id_counter = 0;
+
 	VIDevice device = (VIDevice)vi_malloc(sizeof(VIDeviceObj));
 	device->backend = VI_BACKEND_OPENGL;
 	new (device)VIDeviceObj();
@@ -4058,8 +4166,6 @@ void vi_destroy_device(VIDevice device)
 		
 		vi_destroy_pass(device, device->swapchain_pass);
 		vk_destroy_swapchain(vk);
-
-		vmaDestroyAllocator(vk->vma);
 
 		vk_destroy_device(vk);
 		vk_destroy_surface(vk);
@@ -4455,12 +4561,6 @@ VIBuffer vi_create_buffer(VIDevice device, const VIBufferInfo* info)
 
 	VIVulkan* vk = &device->vk;
 
-	VmaAllocationCreateInfo allocCI{};
-	allocCI.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
-	allocCI.usage = VMA_MEMORY_USAGE_UNKNOWN;
-	allocCI.requiredFlags = info->properties;
-	allocCI.preferredFlags = info->properties;
-
 	VkBufferUsageFlags usage;
 	cast_buffer_usages(info->type, info->usage, &usage);
 
@@ -4469,8 +4569,7 @@ VIBuffer vi_create_buffer(VIDevice device, const VIBufferInfo* info)
 	bufferCI.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	bufferCI.size = (VkDeviceSize)info->size;
 	bufferCI.usage = usage;
-
-	VK_CHECK(vmaCreateBuffer(vk->vma, &bufferCI, &allocCI, &buffer->vk.handle, &buffer->vk.alloc, nullptr));
+	vk_create_buffer(vk, buffer, &bufferCI, info->properties);
 
 	return buffer;
 }
@@ -4480,10 +4579,7 @@ void vi_destroy_buffer(VIDevice device, VIBuffer buffer)
 	if (device->backend == VI_BACKEND_OPENGL)
 		gl_destroy_buffer(device, buffer);
 	else
-	{
-		VIVulkan* vk = &device->vk;
-		vmaDestroyBuffer(vk->vma, buffer->vk.handle, buffer->vk.alloc);
-	}
+		vk_destroy_buffer(&device->vk, buffer);
 
 	buffer->~VIBufferObj();
 	vi_free(buffer);
@@ -5189,6 +5285,13 @@ void vi_device_wait_idle(VIDevice device)
 	VK_CHECK(vkDeviceWaitIdle(device->vk.device));
 }
 
+void vi_device_set_allocator_vk(VIDevice device, const VIAllocatorVK* allocator)
+{
+	VI_ASSERT(device && device->backend == VI_BACKEND_VULKAN);
+
+	device->vk.allocator = *allocator;
+}
+
 const VIDeviceProfileVK* vi_device_get_profile_vk(VIDevice device)
 {
 	VI_ASSERT(device && device->backend == VI_BACKEND_VULKAN);
@@ -5335,7 +5438,13 @@ void vi_buffer_map(VIBuffer buffer)
 		return;
 	}
 
-	VK_CHECK(vmaMapMemory(device->vk.vma, buffer->vk.alloc, (void**) &buffer->map));
+	if (device->vk.allocator.buffer_map)
+	{
+		device->vk.allocator.buffer_map(device->vk.allocator.user, buffer->id, buffer->vk.handle, (void**)&buffer->map);
+		return;
+	}
+
+	VK_CHECK(vkMapMemory(device->vk.device, buffer->vk.memory, 0, (VkDeviceSize)buffer->size, 0, (void**)&buffer->map));
 }
 
 void* vi_buffer_map_read(VIBuffer buffer, uint32_t offset, uint32_t size)
@@ -5393,7 +5502,18 @@ void vi_buffer_map_flush(VIBuffer buffer, uint32_t offset, uint32_t size)
 	if (device->backend == VI_BACKEND_OPENGL || (buffer->properties & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
 		return;
 
-	VK_CHECK(vmaFlushAllocation(device->vk.vma, buffer->vk.alloc, offset, size));
+	if (device->vk.allocator.buffer_map_flush)
+	{
+		device->vk.allocator.buffer_map_flush(device->vk.allocator.user, buffer->id, buffer->vk.handle, offset, size);
+		return;
+	}
+
+	VkMappedMemoryRange range{};
+	range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+	range.memory = buffer->vk.memory;
+	range.offset = (VkDeviceSize)offset;
+	range.size = (VkDeviceSize)size;
+	VK_CHECK(vkFlushMappedMemoryRanges(device->vk.device, 1, &range));
 }
 
 void vi_buffer_map_invalidate(VIBuffer buffer, uint32_t offset, uint32_t size)
@@ -5405,7 +5525,18 @@ void vi_buffer_map_invalidate(VIBuffer buffer, uint32_t offset, uint32_t size)
 	if (device->backend == VI_BACKEND_OPENGL || (buffer->properties & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
 		return;
 
-	VK_CHECK(vmaInvalidateAllocation(device->vk.vma, buffer->vk.alloc, offset, size));
+	if (device->vk.allocator.buffer_map_invalidate)
+	{
+		device->vk.allocator.buffer_map_invalidate(device->vk.allocator.user, buffer->id, buffer->vk.handle, offset, size);
+		return;
+	}
+
+	VkMappedMemoryRange range{};
+	range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+	range.memory = buffer->vk.memory;
+	range.offset = (VkDeviceSize)offset;
+	range.size = (VkDeviceSize)size;
+	VK_CHECK(vkInvalidateMappedMemoryRanges(device->vk.device, 1, &range));
 }
 
 void vi_buffer_unmap(VIBuffer buffer)
@@ -5418,7 +5549,13 @@ void vi_buffer_unmap(VIBuffer buffer)
 	if (device->backend == VI_BACKEND_OPENGL)
 		return;
 
-	vmaUnmapMemory(device->vk.vma, buffer->vk.alloc);
+	if (device->vk.allocator.buffer_unmap)
+	{
+		device->vk.allocator.buffer_unmap(device->vk.allocator.user, buffer->id, buffer->vk.handle);
+		return;
+	}
+
+	vkUnmapMemory(device->vk.device, buffer->vk.memory);
 }
 
 void vi_command_reset(VICommand cmd)

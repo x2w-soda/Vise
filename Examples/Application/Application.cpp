@@ -1,13 +1,25 @@
+#include <cassert>
 #include <iostream>
 #include <fstream>
+#include <unordered_map>
 #include <filesystem>
 #include <sstream>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_impl_vulkan.h>
+#include <vise.h>
+#define VMA_VULKAN_VERSION VI_VMA_VULKAN_VERSION
+#define VMA_IMPLEMENTATION
+#include <vk_mem_alloc.h>
+
 #include "Application.h"
 #include "Common.h"
+
+#define VK_ASSERT(EXPR) do {\
+	VkResult result_ = EXPR;\
+	assert(result_ == VK_SUCCESS);\
+} while(0)
 
 Application* Application::sInstance = nullptr;
 
@@ -426,6 +438,134 @@ void CmdImageLayoutTransition(VICommand cmd, VIImage image, VkImageLayout old_la
 	vi_cmd_pipeline_barrier_image_memory(cmd, src_stages, dst_stages, 0, 1, &barrier);
 }
 
+class VMAAllocator
+{
+public:
+	VMAAllocator() = delete;
+	VMAAllocator(VIDevice device);
+	VMAAllocator(const VMAAllocator&) = delete;
+	~VMAAllocator();
+
+	VMAAllocator& operator=(const VMAAllocator&) = delete;
+
+	static void CreateImage(void* allocator, uint32_t id, VkImage* image, const VkImageCreateInfo* info, VkMemoryPropertyFlags properties);
+	static void DestroyImage(void* allocator, uint32_t id, VkImage image);
+	static void CreateBuffer(void* allocator, uint32_t id, VkBuffer* buffer, const VkBufferCreateInfo* info, VkMemoryPropertyFlags properties);
+	static void DestroyBuffer(void* allocator, uint32_t id, VkBuffer buffer);
+	static void BufferMap(void* allocator, uint32_t id, VkBuffer buffer, void** map);
+	static void BufferUnmap(void* allocator, uint32_t id, VkBuffer buffer);
+	static void BufferMapFlush(void* allocator, uint32_t id, VkBuffer buffer, uint32_t offset, uint32_t size);
+	static void BufferMapInvalidate(void* allocator, uint32_t id, VkBuffer buffer, uint32_t offset, uint32_t size);
+
+private:
+	std::unordered_map<uint32_t, VmaAllocation> mAllocations;
+	VmaAllocator mVMA;
+};
+
+VMAAllocator::VMAAllocator(VIDevice device)
+{
+	VmaVulkanFunctions vma_callbacks{};
+	vma_callbacks.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
+	vma_callbacks.vkGetDeviceProcAddr = vkGetDeviceProcAddr;
+#if VMA_VULKAN_VERSION >= 1003000
+	vma_callbacks.vkGetDeviceBufferMemoryRequirements = vkGetDeviceBufferMemoryRequirements;
+	vma_callbacks.vkGetDeviceImageMemoryRequirements = vkGetDeviceImageMemoryRequirements;
+#endif
+
+	VkDevice vk_device = vi_device_unwrap(device);
+	VkInstance vk_instance = vi_device_unwrap_instance(device);
+	VkPhysicalDevice vk_physical = vi_device_unwrap_physical(device);
+
+	VmaAllocator allocator = nullptr;
+	VmaAllocatorCreateInfo allocatorCI{};
+	allocatorCI.physicalDevice = vk_physical;
+	allocatorCI.device = vk_device;
+	allocatorCI.instance = vk_instance;
+	allocatorCI.pVulkanFunctions = &vma_callbacks;
+	allocatorCI.vulkanApiVersion = VI_VK_API_VERSION;
+	VK_ASSERT(vmaCreateAllocator(&allocatorCI, &mVMA));
+}
+
+VMAAllocator::~VMAAllocator()
+{
+	vmaDestroyAllocator(mVMA);
+}
+
+void VMAAllocator::CreateImage(void* allocator, uint32_t id, VkImage* image, const VkImageCreateInfo* info, VkMemoryPropertyFlags properties)
+{
+	VMAAllocator* alloc = (VMAAllocator*)allocator;
+
+	VmaAllocationCreateInfo allocationCI{};
+	allocationCI.usage = VMA_MEMORY_USAGE_AUTO;
+	allocationCI.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+	allocationCI.priority = 1.0f;
+	allocationCI.requiredFlags = properties;
+	allocationCI.preferredFlags = properties;
+
+	VmaAllocation allocation;
+	VK_ASSERT(vmaCreateImage(alloc->mVMA, info, &allocationCI, image, &allocation, nullptr));
+	alloc->mAllocations[id] = allocation;
+}
+
+void VMAAllocator::DestroyImage(void* allocator, uint32_t id, VkImage image)
+{
+	VMAAllocator* alloc = (VMAAllocator*)allocator;
+
+	vmaDestroyImage(alloc->mVMA, image, alloc->mAllocations[id]);
+	alloc->mAllocations.erase(id);
+}
+
+void VMAAllocator::CreateBuffer(void* allocator, uint32_t id, VkBuffer* buffer, const VkBufferCreateInfo* info, VkMemoryPropertyFlags properties)
+{
+	VMAAllocator* alloc = (VMAAllocator*)allocator;
+
+	VmaAllocationCreateInfo allocationCI{};
+	allocationCI.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
+	allocationCI.usage = VMA_MEMORY_USAGE_UNKNOWN;
+	allocationCI.requiredFlags = properties;
+	allocationCI.preferredFlags = properties;
+
+	VmaAllocation allocation;
+	VK_ASSERT(vmaCreateBuffer(alloc->mVMA, info, &allocationCI, buffer, &allocation, nullptr));
+	alloc->mAllocations[id] = allocation;
+}
+
+void VMAAllocator::DestroyBuffer(void* allocator, uint32_t id, VkBuffer buffer)
+{
+	VMAAllocator* alloc = (VMAAllocator*)allocator;
+
+	vmaDestroyBuffer(alloc->mVMA, buffer, alloc->mAllocations[id]);
+	alloc->mAllocations.erase(id);
+}
+
+void VMAAllocator::BufferMap(void* allocator, uint32_t id, VkBuffer buffer, void** map)
+{
+	VMAAllocator* alloc = (VMAAllocator*)allocator;
+
+	VK_ASSERT(vmaMapMemory(alloc->mVMA, alloc->mAllocations[id], map));
+}
+
+void VMAAllocator::BufferUnmap(void* allocator, uint32_t id, VkBuffer buffer)
+{
+	VMAAllocator* alloc = (VMAAllocator*)allocator;
+
+	vmaUnmapMemory(alloc->mVMA, alloc->mAllocations[id]);
+}
+
+void VMAAllocator::BufferMapFlush(void* allocator, uint32_t id, VkBuffer buffer, uint32_t offset, uint32_t size)
+{
+	VMAAllocator* alloc = (VMAAllocator*)allocator;
+
+	VK_ASSERT(vmaFlushAllocation(alloc->mVMA, alloc->mAllocations[id], (VkDeviceSize)offset, (VkDeviceSize)size));
+}
+
+void VMAAllocator::BufferMapInvalidate(void* allocator, uint32_t id, VkBuffer buffer, uint32_t offset, uint32_t size)
+{
+	VMAAllocator* alloc = (VMAAllocator*)allocator;
+
+	VK_ASSERT(vmaInvalidateAllocation(alloc->mVMA, alloc->mAllocations[id], (VkDeviceSize)offset, (VkDeviceSize)size));
+}
+
 Application::Application(const char* name, VIBackend backend, bool create_visible)
 	: mName(name), mBackend(backend)
 {
@@ -449,7 +589,7 @@ Application::Application(const char* name, VIBackend backend, bool create_visibl
 	std::cout << "application:  " << name << std::endl;
 	std::cout << "current path: " << std::filesystem::current_path() << std::endl;
 
-	VIDeviceInfo deviceI;
+	VIDeviceInfo deviceI{};
 	deviceI.window = (void*)mWindow;
 	deviceI.desired_swapchain_framebuffer_count = APP_DESIRED_FRAMES_IN_FLIGHT;
 	deviceI.vulkan.configure_swapchain = nullptr;
@@ -463,6 +603,20 @@ Application::Application(const char* name, VIBackend backend, bool create_visibl
 	if (backend == VI_BACKEND_VULKAN)
 	{
 		mDevice = vi_create_device_vk(&deviceI, &mDeviceLimits);
+		mVMAAllocator = new VMAAllocator(mDevice);
+
+		VIAllocatorVK allocator;
+		allocator.user = mVMAAllocator;
+		allocator.create_image = &VMAAllocator::CreateImage;
+		allocator.destroy_image = &VMAAllocator::DestroyImage;
+		allocator.create_buffer = &VMAAllocator::CreateBuffer;
+		allocator.destroy_buffer = &VMAAllocator::DestroyBuffer;
+		allocator.buffer_map = &VMAAllocator::BufferMap;
+		allocator.buffer_unmap = &VMAAllocator::BufferUnmap;
+		allocator.buffer_map_flush = &VMAAllocator::BufferMapFlush;
+		allocator.buffer_map_invalidate = &VMAAllocator::BufferMapInvalidate;
+		vi_device_set_allocator_vk(mDevice, &allocator);
+
 		ImGuiVulkanInit();
 	}
 	else
@@ -473,12 +627,17 @@ Application::Application(const char* name, VIBackend backend, bool create_visibl
 
 	// the actual hardware supported frames in flight may be different from what we asked for.
 	mFramesInFlight = mDeviceLimits.swapchain_framebuffer_count;
+
+	mCamera.aspect = APP_WINDOW_ASPECT_RATIO;
 }
 
 Application::~Application()
 {
 	if (mBackend == VI_BACKEND_VULKAN)
+	{
 		ImGuiVulkanShutdown();
+		delete mVMAAllocator;
+	}
 	else
 		ImGuiOpenGLShutdown();
 
