@@ -498,10 +498,9 @@ struct VIVulkan
 	struct
 	{
 		VkSwapchainKHR handle;
-		VkExtent2D image_extent;
 		uint32_t image_idx;
-		VkFormat image_format;
-		VkFormat depth_stencil_format;
+		uint32_t min_image_count;
+		VISwapchainInfo info;
 		std::vector<VkImage> image_handles;
 		std::vector<VIImageObj> images;
 		std::vector<VIImageObj> depth_stencils;
@@ -706,6 +705,9 @@ static void vk_create_device(VIVulkan* vk, VIDevice device, const VIDeviceInfo* 
 static void vk_destroy_device(VIVulkan* vk);
 static void vk_create_swapchain(VIVulkan* vk, const VISwapchainInfo* info, uint32_t min_image_count);
 static void vk_destroy_swapchain(VIVulkan* vk);
+static void vk_recreate_swapchain(VIVulkan* vk);
+static void vk_create_swapchain_framebuffer(VIVulkan* vk);
+static void vk_destroy_swapchain_framebuffer(VIVulkan* vk);
 static void vk_create_buffer(VIVulkan* vk, VIBuffer buffer, const VkBufferCreateInfo* info, const VkMemoryPropertyFlags& properties);
 static void vk_destroy_buffer(VIVulkan* vk, VIBuffer buffer);
 static void vk_create_image(VIVulkan* vk, VIImage image, const VkImageCreateInfo* info, const VkMemoryPropertyFlags& properties);
@@ -1483,9 +1485,9 @@ static void vk_create_swapchain(VIVulkan* vk, const VISwapchainInfo* info, uint3
 	vk->swapchain.images.resize(image_count);
 	VK_CHECK(vkGetSwapchainImagesKHR(vk->device, vk->swapchain.handle, &image_count, vk->swapchain.image_handles.data()));
 
-	vk->swapchain.image_extent = info->image_extent;
-	vk->swapchain.image_format = info->image_format;
-	vk->swapchain.depth_stencil_format = info->depth_stencil_format;
+	vk->swapchain.info = *info;
+	vk->swapchain.min_image_count = min_image_count;
+
 	if (info->depth_stencil_format != VK_FORMAT_UNDEFINED)
 	{
 		vk->swapchain.depth_stencils.resize(image_count);
@@ -1521,7 +1523,7 @@ static void vk_create_swapchain(VIVulkan* vk, const VISwapchainInfo* info, uint3
 			depthStencilImageCI.arrayLayers = 1;
 			depthStencilImageCI.mipLevels = 1;
 			depthStencilImageCI.imageType = VK_IMAGE_TYPE_2D;
-			depthStencilImageCI.format = vk->swapchain.depth_stencil_format;
+			depthStencilImageCI.format = vk->swapchain.info.depth_stencil_format;
 			depthStencilImageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
 			depthStencilImageCI.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT; 
 			depthStencilImageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -1530,14 +1532,14 @@ static void vk_create_swapchain(VIVulkan* vk, const VISwapchainInfo* info, uint3
 			vk_default_create_image(depthStencil, &depthStencilImageCI, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 			viewCI.image = vk->swapchain.depth_stencils[i].vk.handle;
-			viewCI.format = vk->swapchain.depth_stencil_format;
+			viewCI.format = vk->swapchain.info.depth_stencil_format;
 			viewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT; // TODO: only if there are stencil bits
 			vk_create_image_view(vk, depthStencil, &viewCI);
 		}
 		
 		// swapchain framebuffer color attachment
 		viewCI.image = vk->swapchain.image_handles[i];
-		viewCI.format = vk->swapchain.image_format;
+		viewCI.format = vk->swapchain.info.image_format;
 		viewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		vk_create_image_view(vk, vk->swapchain.images.data() + i, &viewCI);
 	}
@@ -1559,6 +1561,84 @@ static void vk_destroy_swapchain(VIVulkan* vk)
 
 	vkDestroySwapchainKHR(vk->device, vk->swapchain.handle, nullptr);
 	vk->swapchain.handle = VK_NULL_HANDLE;
+}
+
+static void vk_recreate_swapchain(VIVulkan* vk)
+{
+	vkDeviceWaitIdle(vk->device);
+
+	size_t old_image_count = vk->swapchain.images.size();
+	uint32_t min_image_count = vk->swapchain.min_image_count;
+	VISwapchainInfo info = vk->swapchain.info;
+
+	vk_destroy_swapchain_framebuffer(vk);
+	vk_destroy_swapchain(vk);
+
+	VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk->pdevice_chosen->handle, vk->surface, &vk->pdevice_chosen->surface_caps));
+
+	info.image_extent = vk->pdevice_chosen->surface_caps.currentExtent;
+	vk_create_swapchain(vk, &info, min_image_count);
+	vk_create_swapchain_framebuffer(vk);
+
+	for (uint32_t i = 0; i < vk->frames_in_flight; i++)
+	{
+		VIFrame* frame = vk->frames + i;
+
+		VkFenceCreateInfo fenceCI;
+		fenceCI.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+		fenceCI.pNext = NULL;
+		fenceCI.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+		vkDestroyFence(vk->device, frame->fence.frame_complete.vk_handle, nullptr);
+		VK_CHECK(vkCreateFence(vk->device, &fenceCI, NULL, &frame->fence.frame_complete.vk_handle));
+
+		VkSemaphoreCreateInfo semCI;
+		semCI.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+		semCI.pNext = NULL;
+		semCI.flags = 0;
+		vkDestroySemaphore(vk->device, frame->semaphore.image_acquired.vk_handle, nullptr);
+		vkDestroySemaphore(vk->device, frame->semaphore.present_ready.vk_handle, nullptr);
+		VK_CHECK(vkCreateSemaphore(vk->device, &semCI, NULL, &frame->semaphore.image_acquired.vk_handle));
+		VK_CHECK(vkCreateSemaphore(vk->device, &semCI, NULL, &frame->semaphore.present_ready.vk_handle));
+	}
+
+	VI_ASSERT(vk->swapchain.images.size() == old_image_count);
+}
+
+void vk_create_swapchain_framebuffer(VIVulkan * vk)
+{
+	VIDevice device = vk->vi_device;
+
+	size_t image_count = vk->swapchain.images.size();
+	device->swapchain_framebuffers = (VIFramebuffer)vi_malloc(sizeof(VIFramebufferObj) * image_count);
+
+	for (size_t i = 0; i < image_count; i++)
+	{
+		device->swapchain_framebuffers[i].extent = vk->swapchain.info.image_extent;
+
+		std::vector<VIImage> atchs;
+
+		atchs.push_back(vk->swapchain.images.data() + i);
+		if (vk->swapchain.depth_stencils.size() > 0)
+			atchs.push_back(vk->swapchain.depth_stencils.data() + i);
+
+		vk_create_framebuffer(vk,
+			device->swapchain_framebuffers + i,
+			device->swapchain_pass,
+			vk->swapchain.info.image_extent,
+			atchs.size(),
+			atchs.data()
+		);
+	}
+}
+
+static void vk_destroy_swapchain_framebuffer(VIVulkan* vk)
+{
+	VIDevice device = vk->vi_device;
+
+	for (uint32_t i = 0; i < vk->swapchain.images.size(); i++)
+		vk_destroy_framebuffer(vk, device->swapchain_framebuffers + i);
+
+	vi_free(device->swapchain_framebuffers);
 }
 
 static void vk_create_buffer(VIVulkan* vk, VIBuffer buffer, const VkBufferCreateInfo* info, const VkMemoryPropertyFlags& properties)
@@ -3947,14 +4027,14 @@ VIDevice vi_create_device_vk(const VIDeviceInfo* info, VIDeviceLimits* limits)
 		vk_create_swapchain(vk, &swapchainI, min_image_count);
 
 		uint32_t swapchain_image_count = vk->swapchain.images.size();
-		limits->swapchain_framebuffer_count = swapchain_image_count;
 
+		limits->swapchain_framebuffer_count = swapchain_image_count;
 		vk->frames_in_flight = swapchain_image_count;
 		vk->frames = (VIFrame*)vi_malloc(sizeof(VIFrame) * swapchain_image_count);
 		vk->frame_idx = 0;
 
 		VIFormat vi_color_format;
-		cast_format_vk(vk->swapchain.image_format, &vi_color_format);
+		cast_format_vk(vk->swapchain.info.image_format, &vi_color_format);
 
 		VIPassColorAttachment color_atch;
 		color_atch.color_format = vi_color_format;
@@ -3964,11 +4044,11 @@ VIDevice vi_create_device_vk(const VIDeviceInfo* info, VIDeviceLimits* limits)
 		color_atch.final_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
 		VIPassDepthStencilAttachment depth_stencil_atch;
-		bool has_depth_stencil_atch = vk->swapchain.depth_stencil_format != VK_FORMAT_UNDEFINED;
+		bool has_depth_stencil_atch = vk->swapchain.info.depth_stencil_format != VK_FORMAT_UNDEFINED;
 		if (has_depth_stencil_atch)
 		{
 			VIFormat vi_depth_stencil_format;
-			cast_format_vk(vk->swapchain.depth_stencil_format, &vi_depth_stencil_format);
+			cast_format_vk(vk->swapchain.info.depth_stencil_format, &vi_depth_stencil_format);
 
 			depth_stencil_atch.depth_stencil_format = vi_depth_stencil_format;
 			depth_stencil_atch.depth_load_op = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -4019,27 +4099,7 @@ VIDevice vi_create_device_vk(const VIDeviceInfo* info, VIDeviceLimits* limits)
 
 		device->swapchain_pass = vi_create_pass(device, &passI);
 		
-		uint32_t image_count = device->vk.swapchain.images.size();
-		device->swapchain_framebuffers = (VIFramebuffer)vi_malloc(sizeof(VIFramebufferObj) * image_count);
-
-		for (uint32_t i = 0; i < image_count; i++)
-		{
-			device->swapchain_framebuffers[i].extent = device->vk.swapchain.image_extent;
-
-			std::vector<VIImage> atchs;
-
-			atchs.push_back(vk->swapchain.images.data() + i);
-			if (has_depth_stencil_atch)
-				atchs.push_back(vk->swapchain.depth_stencils.data() + i);
-
-			vk_create_framebuffer(vk,
-				device->swapchain_framebuffers + i,
-				device->swapchain_pass,
-				vk->swapchain.image_extent,
-				atchs.size(),
-				atchs.data()
-			);
-		}
+		vk_create_swapchain_framebuffer(vk);
 	}
 
 	// per-frame resources
@@ -4160,10 +4220,8 @@ void vi_destroy_device(VIDevice device)
 			vkDestroyFence(vk->device, frame->fence.frame_complete.vk_handle, nullptr);
 		}
 		vkDestroyCommandPool(vk->device, vk->cmd_pool_graphics.vk_handle, nullptr);
-
-		for (uint32_t i = 0; i < vk->swapchain.images.size(); i++)
-			vk_destroy_framebuffer(vk, device->swapchain_framebuffers + i);
 		
+		vk_destroy_swapchain_framebuffer(vk);
 		vi_destroy_pass(device, device->swapchain_pass);
 		vk_destroy_swapchain(vk);
 
@@ -4179,10 +4237,10 @@ void vi_destroy_device(VIDevice device)
 	{
 		VIOpenGL* gl = &device->gl;
 
+		vi_free(device->swapchain_framebuffers);
+
 		gl->~VIOpenGL();
 	}
-
-	vi_free(device->swapchain_framebuffers);
 
 	device->~VIDeviceObj();
 	vi_free(device);
@@ -5354,7 +5412,7 @@ VIFramebuffer vi_device_get_swapchain_framebuffer(VIDevice device, uint32_t inde
 
 uint32_t vi_device_next_frame(VIDevice device, VISemaphore* image_acquired, VISemaphore* present_ready, VIFence* frame_complete)
 {
-	VI_ASSERT(image_acquired && present_ready);
+	VI_ASSERT(image_acquired && present_ready && frame_complete);
 
 	if (device->backend == VI_BACKEND_OPENGL)
 	{
@@ -5384,9 +5442,24 @@ uint32_t vi_device_next_frame(VIDevice device, VISemaphore* image_acquired, VISe
 		VK_NULL_HANDLE,
 		&vk->swapchain.image_idx
 	);
-	VK_CHECK(result);
 
-	// assumes successful acquiring
+	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+	{
+		vk_recreate_swapchain(vk);
+
+		result = vkAcquireNextImageKHR(
+			vk->device,
+			vk->swapchain.handle,
+			UINT64_MAX,
+			frame->semaphore.image_acquired.vk_handle,
+			VK_NULL_HANDLE,
+			&vk->swapchain.image_idx
+		);
+	}
+
+	if (result != VK_SUCCESS)
+		VI_UNREACHABLE; // unable to recover
+
 	VK_CHECK(vkResetFences(vk->device, 1, &frame->fence.frame_complete.vk_handle));
 
 	*image_acquired = &frame->semaphore.image_acquired;
