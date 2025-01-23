@@ -4,7 +4,7 @@
 #include "TestApplication.h"
 
 TestApplication::TestApplication(const char* name, VIBackend backend)
-	: Application(name, backend, false)
+	: Application(name, backend, false, false)
 {
 	// right after the screenshot pass we will copy the color attachment to host visible buffer
 	VkSubpassDependency dep;

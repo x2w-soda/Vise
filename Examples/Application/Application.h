@@ -85,7 +85,7 @@ class Application
 public:
 	Application() = delete;
 	Application(const Application&) = delete;
-	Application(const char* name, VIBackend backend, bool create_visible = true);
+	Application(const char* name, VIBackend backend, bool visible = true, bool resizable = true);
 	virtual ~Application();
 
 	Application& operator=(const Application&) = delete;
@@ -120,6 +120,9 @@ protected:
 	double mFrameTimeThisFrame;
 	double mFrameTimePrevFrame;
 	const char* mName;
+	int mWindowWidth;
+	int mWindowHeight;
+	bool mWindowIsMinimized = false;
 	GLFWwindow* mWindow;
 	VIDevice mDevice;
 	VIDeviceLimits mDeviceLimits;
@@ -128,6 +131,8 @@ protected:
 	VMAAllocator* mVMAAllocator = nullptr;
 
 private:
+	static void WindowSizeCallback(GLFWwindow* window, int width, int height);
+
 	void ImGuiOpenGLInit();
 	void ImGuiOpenGLShutdown();
 	void ImGuiOpenGLNewFrame();

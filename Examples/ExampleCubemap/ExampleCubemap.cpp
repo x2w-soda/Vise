@@ -330,6 +330,10 @@ void ExampleCubemap::Run()
 	while (!glfwWindowShouldClose(mWindow))
 	{
 		Application::NewFrame();
+
+		if (mWindowIsMinimized)
+			continue;
+
 		Application::ImGuiNewFrame();
 		Application::CameraUpdate();
 
@@ -389,8 +393,8 @@ void ExampleCubemap::Run()
 		vi_cmd_begin_pass(frame->cmd, &beginI);
 		{
 			vi_cmd_bind_graphics_pipeline(frame->cmd, mSkyboxPipeline);
-			vi_cmd_set_viewport(frame->cmd, MakeViewport(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT));
-			vi_cmd_set_scissor(frame->cmd, MakeScissor(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT));
+			vi_cmd_set_viewport(frame->cmd, MakeViewport(mWindowWidth, mWindowHeight));
+			vi_cmd_set_scissor(frame->cmd, MakeScissor(mWindowWidth, mWindowHeight));
 
 			vi_cmd_bind_vertex_buffers(frame->cmd, 0, 1, &mCubeVBO);
 			vi_cmd_bind_graphics_set(frame->cmd, mPipelineLayout, 0, frame->set);
@@ -406,8 +410,8 @@ void ExampleCubemap::Run()
 			vi_cmd_draw(frame->cmd, &info);
 
 			vi_cmd_bind_graphics_pipeline(frame->cmd, mModelPipeline);
-			vi_cmd_set_viewport(frame->cmd, MakeViewport(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT));
-			vi_cmd_set_scissor(frame->cmd, MakeScissor(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT));
+			vi_cmd_set_viewport(frame->cmd, MakeViewport(mWindowWidth, mWindowHeight));
+			vi_cmd_set_scissor(frame->cmd, MakeScissor(mWindowWidth, mWindowHeight));
 
 			vi_cmd_bind_graphics_set(frame->cmd, mPipelineLayout, 0, frame->set);
 

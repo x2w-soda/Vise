@@ -203,6 +203,9 @@ void ExamplePyramid::Run()
 		VISemaphore present_ready;
 		VIFence frame_complete;
 		uint32_t frame_idx = vi_device_next_frame(mDevice, &image_acquired, &present_ready, &frame_complete);
+		if (frame_idx >= mFramesInFlight)
+			continue;
+
 		VIPass pass = vi_device_get_swapchain_pass(mDevice);
 		VIFramebuffer fb = vi_device_get_swapchain_framebuffer(mDevice, frame_idx);
 
@@ -228,8 +231,8 @@ void ExamplePyramid::Run()
 		vi_cmd_begin_pass(frame->cmd, &beginI);
 		{
 			vi_cmd_bind_graphics_pipeline(frame->cmd, mPipeline);
-			vi_cmd_set_viewport(frame->cmd, MakeViewport(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT));
-			vi_cmd_set_scissor(frame->cmd, MakeScissor(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT));
+			vi_cmd_set_viewport(frame->cmd, MakeViewport(mWindowWidth, mWindowHeight));
+			vi_cmd_set_scissor(frame->cmd, MakeScissor(mWindowWidth, mWindowHeight));
 
 			vi_cmd_bind_graphics_set(frame->cmd, mPipelineLayout, 0, frame->set);
 			vi_cmd_bind_vertex_buffers(frame->cmd, 0, 1, &mVBO);
@@ -266,10 +269,12 @@ void ExamplePyramid::KeyCallback(GLFWwindow* window, int key, int scancode, int 
 {
 	ExamplePyramid* example = ExamplePyramid::Get();
 
-	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+	if (action != GLFW_PRESS)
+		return;
+
+	if (key == GLFW_KEY_ESCAPE)
 	{
 		example->CameraToggleCapture();
-		puts("OK");
 	}
 }
 

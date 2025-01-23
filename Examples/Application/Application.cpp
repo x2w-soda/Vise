@@ -566,14 +566,14 @@ void VMAAllocator::BufferMapInvalidate(void* allocator, uint32_t id, VkBuffer bu
 	VK_ASSERT(vmaInvalidateAllocation(alloc->mVMA, alloc->mAllocations[id], (VkDeviceSize)offset, (VkDeviceSize)size));
 }
 
-Application::Application(const char* name, VIBackend backend, bool create_visible)
+Application::Application(const char* name, VIBackend backend, bool visible, bool resizable)
 	: mName(name), mBackend(backend)
 {
 	sInstance = this;
 
 	glfwInit();
-	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-	glfwWindowHint(GLFW_VISIBLE, create_visible);
+	glfwWindowHint(GLFW_RESIZABLE, resizable);
+	glfwWindowHint(GLFW_VISIBLE, visible);
 
 	if (backend == VI_BACKEND_OPENGL)
 	{
@@ -583,10 +583,12 @@ Application::Application(const char* name, VIBackend backend, bool create_visibl
 	}
 
 	mWindow = glfwCreateWindow(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT, mName, nullptr, nullptr);
+	mWindowWidth = APP_WINDOW_WIDTH;
+	mWindowHeight = APP_WINDOW_HEIGHT;
 	glfwMakeContextCurrent(mWindow);
 	glfwSwapInterval(1); // only relevant on OpenGL backend
 
-	std::cout << "application:  " << name << std::endl;
+	std::cout << "application:  " << mName << std::endl;
 	std::cout << "current path: " << std::filesystem::current_path() << std::endl;
 
 	VIDeviceInfo deviceI{};
@@ -629,6 +631,8 @@ Application::Application(const char* name, VIBackend backend, bool create_visibl
 	mFramesInFlight = mDeviceLimits.swapchain_framebuffer_count;
 
 	mCamera.aspect = APP_WINDOW_ASPECT_RATIO;
+
+	glfwSetWindowSizeCallback(mWindow, &Application::WindowSizeCallback);
 }
 
 Application::~Application()
@@ -794,6 +798,15 @@ void Application::ImGuiDeviceProfile()
 		ImGui::Text("- version: %s", profile->version);
 		ImGui::Text("- vendor: %s", profile->vendor);
 	}
+}
+
+void Application::WindowSizeCallback(GLFWwindow* window, int width, int height)
+{
+	Application* app = Application::Get();
+	app->mCamera.aspect = (float)width / (float)height;
+	app->mWindowWidth = width;
+	app->mWindowHeight = height;
+	app->mWindowIsMinimized = width <= 0 || height <= 0;
 }
 
 void Application::ImGuiOpenGLInit()

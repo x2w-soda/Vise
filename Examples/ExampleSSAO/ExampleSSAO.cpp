@@ -283,7 +283,7 @@ struct SceneUBO
 };
 
 ExampleSSAO::ExampleSSAO(VIBackend backend)
-	: Application("Screen Space Ambient Occlusion", backend)
+	: Application("Screen Space Ambient Occlusion", backend, true, false)
 {
 	glfwSetKeyCallback(mWindow, &ExampleSSAO::KeyCallback);
 

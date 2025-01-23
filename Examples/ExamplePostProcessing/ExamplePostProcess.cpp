@@ -113,7 +113,7 @@ struct FrameUBO
 };
 
 ExamplePostProcess::ExamplePostProcess(VIBackend backend)
-	: Application("Post Processing", backend)
+	: Application("Post Processing", backend, true, false)
 {
 	glfwSetKeyCallback(mWindow, &ExamplePostProcess::KeyCallback);
 

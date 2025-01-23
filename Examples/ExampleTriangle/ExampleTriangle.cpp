@@ -33,7 +33,7 @@ void main()
 )";
 
 ExampleTriangle::ExampleTriangle(VIBackend backend)
-	: Application("Triangle", backend)
+	: Application("Triangle", backend, true, false)
 {
 	VIPass pass = vi_device_get_swapchain_pass(mDevice);
 
