@@ -1,6 +1,7 @@
 #include <string>
 #include <cassert>
 #include <iostream>
+#include <algorithm>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <tiny_gltf.h>
@@ -291,7 +292,7 @@ GLTFModel::~GLTFModel()
 	mEmptyTexture.Image = VI_NULL;
 }
 
-void GLTFModel::Draw(VICommand cmd, VIPipelineLayout layout, uint32_t materialSetIndex)
+void GLTFModel::Draw(VICommand cmd, VIPipelineLayout layout, uint32_t materialSetIndex, const glm::mat4& transform)
 {
 	vi_cmd_bind_vertex_buffers(cmd, 0, 1, &mVBO);
 	vi_cmd_bind_index_buffer(cmd, mIBO, VK_INDEX_TYPE_UINT32);
@@ -299,9 +300,29 @@ void GLTFModel::Draw(VICommand cmd, VIPipelineLayout layout, uint32_t materialSe
 	mDrawMaterial = nullptr;
 	mDrawPipelineLayout = layout;
 	mMaterialSetIndex = materialSetIndex;
+	mDrawTransform = transform;
 
 	for (GLTFNode* node : mRootNodes)
 		DrawNode(cmd, node);
+}
+
+void GLTFModel::GetBoundingBox(glm::vec3& minPos, glm::vec3& maxPos)
+{
+	assert(mLoadFlags & LOAD_FLAG_CALCULATE_BOUNDING_BOX_BIT);
+
+	minPos = mMinPos;
+	maxPos = mMaxPos;
+}
+
+void GLTFModel::GetBoundingSphere(glm::vec3& pos, float& radius)
+{
+	assert(mLoadFlags & LOAD_FLAG_CALCULATE_BOUNDING_BOX_BIT);
+
+	glm::vec3 extent{ mMaxPos.x - mMinPos.x, mMaxPos.y - mMinPos.y ,mMaxPos.z - mMinPos.z };
+	extent *= 0.5f;
+
+	pos = mMinPos + extent;
+	radius = glm::length(extent);
 }
 
 void GLTFModel::DrawNode(VICommand cmd, GLTFNode* node)
@@ -318,8 +339,11 @@ void GLTFModel::DrawNode(VICommand cmd, GLTFNode* node)
 				vi_cmd_bind_graphics_set(cmd, mDrawPipelineLayout, mMaterialSetIndex, prim.Material->Set);
 			}
 
-			glm::mat4 transform = node->Transform;
-			vi_cmd_push_constants(cmd, mDrawPipelineLayout, 0, sizeof(transform), &transform);
+			glm::mat4 worldTransform = mDrawTransform;
+			if ((mLoadFlags & LOAD_FLAG_APPLY_NODE_TRANSFORM_BIT) == 0)
+				worldTransform = mDrawTransform * node->Transform;
+	
+			vi_cmd_push_constants(cmd, mDrawPipelineLayout, 0, sizeof(worldTransform), &worldTransform);
 
 			VIDrawIndexedInfo drawI;
 			drawI.index_count = prim.IndexCount;
@@ -334,12 +358,13 @@ void GLTFModel::DrawNode(VICommand cmd, GLTFNode* node)
 		DrawNode(cmd, child);
 }
 
-std::shared_ptr<GLTFModel> GLTFModel::LoadFromFile(const char* path, VIDevice device, VISetLayout materialSL)
+std::shared_ptr<GLTFModel> GLTFModel::LoadFromFile(const char* path, VIDevice device, VISetLayout materialSL, int loadFlags)
 {
 	Timer timer;
 	timer.Start();
 
 	std::shared_ptr<GLTFModel> model = std::make_shared<GLTFModel>(device);
+	model->mLoadFlags = loadFlags;
 	model->mMaterialSetLayout = materialSL;
 
 	tinygltf::TinyGLTF loader;
@@ -436,6 +461,11 @@ void GLTFModel::LoadMaterials(tinygltf::Model& tinyModel)
 		if (tinyMat.values.find("baseColorFactor") != tinyMat.values.end())
 		{
 			mat.BaseColorFactor = glm::make_vec4(tinyMat.values["baseColorFactor"].ColorFactor().data());
+			ubo.ColorFactor = mat.BaseColorFactor;
+		}
+		else
+		{
+			ubo.ColorFactor = glm::vec4(0.0f);
 		}
 
 		if (tinyMat.values.find("roughnessFactor") != tinyMat.values.end())
@@ -602,7 +632,7 @@ void GLTFModel::LoadNode(tinygltf::Model& tinyModel, tinygltf::Node& tinyNode, u
 		LoadNode(tinyModel, tinyModel.nodes[tinyNode.children[i]], tinyNode.children[i], node);
 
 	if (tinyNode.mesh >= 0)
-		node->Mesh = LoadMesh(tinyModel, tinyModel.meshes[tinyNode.mesh]);
+		node->Mesh = LoadMesh(tinyModel, tinyModel.meshes[tinyNode.mesh], node);
 
 	if (parent)
 		parent->Children.push_back(node);
@@ -610,7 +640,7 @@ void GLTFModel::LoadNode(tinygltf::Model& tinyModel, tinygltf::Node& tinyNode, u
 		mRootNodes.push_back(node);
 }
 
-GLTFMesh* GLTFModel::LoadMesh(tinygltf::Model& tinyModel, tinygltf::Mesh& tinyMesh)
+GLTFMesh* GLTFModel::LoadMesh(tinygltf::Model& tinyModel, tinygltf::Mesh& tinyMesh, GLTFNode* node)
 {
 	GLTFMesh* mesh = new GLTFMesh();
 
@@ -666,6 +696,26 @@ GLTFMesh* GLTFModel::LoadMesh(tinygltf::Model& tinyModel, tinygltf::Mesh& tinyMe
 				vert.Position = glm::vec4(glm::make_vec3(&bufferPos[v * posByteStride]), 1.0f);
 				vert.Normal = glm::normalize(glm::vec3(bufferNormals ? glm::make_vec3(&bufferNormals[v * normByteStride]) : glm::vec3(0.0f)));
 				vert.TextureUV = bufferTexCoordSet0 ? glm::make_vec2(&bufferTexCoordSet0[v * uv0ByteStride]) : glm::vec2(0.0f);
+
+				glm::vec3 modelPos = glm::vec3(node->Transform * glm::vec4(vert.Position, 1.0f));
+
+				if (mLoadFlags & LOAD_FLAG_APPLY_NODE_TRANSFORM_BIT)
+				{
+					vert.Position = modelPos;
+				}
+
+				if (mLoadFlags & LOAD_FLAG_CALCULATE_BOUNDING_BOX_BIT)
+				{
+					if (mVertexBase == 1)
+						mMaxPos = mMinPos = modelPos;
+
+					mMaxPos.x = (std::max)(mMaxPos.x, modelPos.x);
+					mMaxPos.y = (std::max)(mMaxPos.y, modelPos.y);
+					mMaxPos.z = (std::max)(mMaxPos.z, modelPos.z);
+					mMinPos.x = (std::min)(mMinPos.x, modelPos.x);
+					mMinPos.y = (std::min)(mMinPos.y, modelPos.y);
+					mMinPos.z = (std::min)(mMinPos.z, modelPos.z);
+				}
 			}
 		}
 

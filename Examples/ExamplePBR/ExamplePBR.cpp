@@ -384,23 +384,9 @@ layout (set = 0, binding = 0) uniform uScene
 layout (set = 0, binding = 1) uniform sampler2D uBRDFLUT;
 layout (set = 0, binding = 2) uniform samplerCube uIrradiance;
 layout (set = 0, binding = 3) uniform samplerCube uPrefilter;
-
-// MATERIAL SET
-
-layout (set = 1, binding = 0) uniform uMat
-{
-	uint has_color_map;
-	uint has_normal_map;
-	uint has_metallic_roughness_map;
-	uint has_occlusion_map;
-	float metallic_factor;
-	float roughness_factor;
-} Mat;
-
-layout (set = 1, binding = 1) uniform sampler2D uMatColor;
-layout (set = 1, binding = 2) uniform sampler2D uMatNormal;
-layout (set = 1, binding = 3) uniform sampler2D uMatMR;
-
+)"
+GLSL_MATERIAL_SET(1)
+R"(
 vec3 fresnel_schlick_IBL(float cosTheta, vec3 F0, float roughness)
 {
     return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
@@ -416,8 +402,8 @@ void main()
     vec3 R = reflect(-V, N);   
 	vec4 MR = texture(uMatMR, vUV);
 	float NdotV = max(dot(N, V), 0.0);
-	float roughness = clamp(MR.g * Mat.roughness_factor, 0.0, 1.0);
-	float metallic = clamp(MR.b * Mat.metallic_factor, 0.0, 1.0);
+	float roughness = clamp(MR.g * uMat.roughnessFactor, 0.0, 1.0);
+	float metallic = clamp(MR.b * uMat.metallicFactor, 0.0, 1.0);
 	
 	// overrides
 	roughness = clamp(roughness, 0.0, Scene.clamp_max_roughness);

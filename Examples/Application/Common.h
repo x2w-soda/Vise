@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <vector>
+#include <string>
 #include <algorithm>
 #include <glm/vec3.hpp>
 #include <glm/mat4x4.hpp>
@@ -19,6 +20,9 @@
 
 const float* GetSkyboxVertices(uint32_t* vertexCount, uint32_t* byteSize,
 	std::vector<VIVertexAttribute>* attrs = nullptr, std::vector<VIVertexBinding>* bindings = nullptr);
+
+unsigned char* LoadCubemap(const std::string& path, int* dim);
+void FreeCubemap(unsigned char* pixels);
 
 class Timer
 {

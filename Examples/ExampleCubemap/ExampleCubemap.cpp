@@ -94,22 +94,9 @@ layout (set = 0, binding = 0) uniform Scene
 
 layout (set = 0, binding = 1) uniform samplerCube uCubemap;
 
-// MATERIAL SET
-
-layout (set = 1, binding = 0) uniform Mat
-{
-	uint hasColorMap;
-	uint hasNormalMap;
-	uint hasMetallicRoughnessMap;
-	uint hasOcclusionMap;
-	float metallicFactor;
-	float roughnessFactor;
-} uMat;
-
-layout (set = 1, binding = 1) uniform sampler2D uMatColor;
-layout (set = 1, binding = 2) uniform sampler2D uMatNormal;
-layout (set = 1, binding = 3) uniform sampler2D uMatMR;
-
+)"
+GLSL_MATERIAL_SET(1)
+R"(
 layout (push_constant) uniform PC
 {
 	mat4 nodeTransform;

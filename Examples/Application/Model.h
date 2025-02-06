@@ -10,6 +10,23 @@
 #include <glm/vec4.hpp>
 #include <glm/mat4x4.hpp>
 #include <vise.h>
+#include "Common.h"
+
+#define GLSL_MATERIAL_SET(INDEX)\
+"layout (set = " STR(INDEX) ", binding = 0) uniform Mat\n"\
+"{\n"\
+"    uint hasColorMap;\n"\
+"    uint hasNormalMap;\n"\
+"    uint hasMetallicRoughness_map;\n"\
+"    uint hasOcclusionMap;\n"\
+"    vec4 colorFactor;\n"\
+"    float metallicFactor;\n"\
+"    float roughnessFactor;\n"\
+"} uMat;\n"\
+"\n"\
+"layout(set = " STR(INDEX) ", binding = 1) uniform sampler2D uMatColor;\n"\
+"layout(set = " STR(INDEX) ", binding = 2) uniform sampler2D uMatNormal;\n"\
+"layout(set = " STR(INDEX) ", binding = 3) uniform sampler2D uMatMR;\n"
 
 struct MeshVertex;
 struct MeshData;
@@ -118,6 +135,7 @@ struct GLTFMaterialUBO
 	uint32_t HasNormalMap;
 	uint32_t HasMetallicRoughnessMap;
 	uint32_t HasOcclusionMap;
+	glm::vec4 ColorFactor;
 	float MetallicFactor;
 	float RoughnessFactor;
 };
@@ -208,9 +226,18 @@ public:
 
 	GLTFModel& operator=(const GLTFModel&) = delete;
 
-	void Draw(VICommand cmd, VIPipelineLayout layout, uint32_t materialSetIndex);
+	void Draw(VICommand cmd, VIPipelineLayout layout, uint32_t materialSetIndex, const glm::mat4& transform = glm::mat4(1.0f));
 
-	static std::shared_ptr<GLTFModel> LoadFromFile(const char* path, VIDevice device, VISetLayout materialSL);
+	void GetBoundingBox(glm::vec3& minPos, glm::vec3& maxPos);
+	void GetBoundingSphere(glm::vec3& pos, float& radius);
+
+	enum LoadFlag
+	{
+		LOAD_FLAG_APPLY_NODE_TRANSFORM_BIT = 1,   // apply node transform to each vertex
+		LOAD_FLAG_CALCULATE_BOUNDING_BOX_BIT = 2, // calculate AABB containing all primitives
+	};
+
+	static std::shared_ptr<GLTFModel> LoadFromFile(const char* path, VIDevice device, VISetLayout materialSL, int loadFlags = 0);
 
 private:
 	void DrawNode(VICommand cmd, GLTFNode* node);
@@ -219,10 +246,13 @@ private:
 	void LoadImages(tinygltf::Model& model);
 	void LoadMaterials(tinygltf::Model& model);
 	void LoadNode(tinygltf::Model& tinyModel, tinygltf::Node& tinyNode, uint32_t nodeIndex, GLTFNode* parent);
-	GLTFMesh* LoadMesh(tinygltf::Model& model, tinygltf::Mesh& mesh);
+	GLTFMesh* LoadMesh(tinygltf::Model& model, tinygltf::Mesh& mesh, GLTFNode* node);
 	void AllocateSets();
 	void FreeSets();
 
+	int mLoadFlags;
+	glm::vec3 mMaxPos;
+	glm::vec3 mMinPos;
 	uint32_t mVertexCount;
 	uint32_t mVertexBase;
 	uint32_t mIndexCount;
@@ -234,6 +264,7 @@ private:
 	VIBuffer mIBO = VI_NULL;
 	VISetPool mSetPool = VI_NULL;
 	VIPipelineLayout mDrawPipelineLayout = VI_NULL;
+	glm::mat4 mDrawTransform;
 	GLTFMaterial* mDrawMaterial;
 	GLTFVertex* mVertices;
 	GLTFTexture mEmptyTexture;
