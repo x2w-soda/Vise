@@ -114,7 +114,7 @@ protected:
 	void ImGuiDeviceProfile();
 
 protected:
-	bool mIsFirstFrame = false;
+	bool mIsFirstFrame = true;
 	int mFramesInFlight;
 	double mFrameTimeDelta;
 	double mFrameTimeThisFrame;
