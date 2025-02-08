@@ -615,56 +615,43 @@ struct VIDrawIndexedInfo
 	uint32_t instance_start;
 };
 
+// Device and Synchronization
+
 VI_API VIDevice vi_create_device_vk(const VIDeviceInfo* info, VIDeviceLimits* limits);
 VI_API VIDevice vi_create_device_gl(const VIDeviceInfo* info, VIDeviceLimits* limits);
 VI_API void vi_destroy_device(VIDevice device);
-VI_API VIFence vi_create_fence(VIDevice device, VkFenceCreateFlags flags);
-VI_API void vi_wait_for_fences(VIDevice device, uint32_t fence_count, VIFence* fences, bool wait_all, uint64_t timeout);
-VI_API void vi_destroy_fence(VIDevice device, VIFence fence);
-VI_API VIPass vi_create_pass(VIDevice device, const VIPassInfo* info);
-VI_API void vi_destroy_pass(VIDevice device, VIPass pass);
-VI_API VIModule vi_create_module(VIDevice device, const VIModuleInfo* info);
-VI_API void vi_destroy_module(VIDevice device, VIModule module);
-VI_API VIBuffer vi_create_buffer(VIDevice device, const VIBufferInfo* info);
-VI_API void vi_destroy_buffer(VIDevice device, VIBuffer buffer);
-VI_API VIImage vi_create_image(VIDevice device, const VIImageInfo* info);
-VI_API void vi_destroy_image(VIDevice device, VIImage image);
-VI_API VISetPool vi_create_set_pool(VIDevice device, const VISetPoolInfo* info);
-VI_API void vi_destroy_set_pool(VIDevice device, VISetPool pool);
-VI_API VISetLayout vi_create_set_layout(VIDevice device, const VISetLayoutInfo* info);
-VI_API void vi_destroy_set_layout(VIDevice device, VISetLayout layout);
-VI_API VISet vi_allocate_set(VIDevice device, VISetPool pool, VISetLayout layout);
-VI_API void vi_free_set(VIDevice device, VISet set);
-VI_API VIPipelineLayout vi_create_pipeline_layout(VIDevice device, const VIPipelineLayoutInfo* info);
-VI_API void vi_destroy_pipeline_layout(VIDevice device, VIPipelineLayout layout);
-VI_API VIPipeline vi_create_pipeline(VIDevice device, const VIPipelineInfo* info);
-VI_API void vi_destroy_pipeline(VIDevice device, VIPipeline pipeline);
-VI_API VIComputePipeline vi_create_compute_pipeline(VIDevice device, const VIComputePipelineInfo* info);
-VI_API void vi_destroy_compute_pipeline(VIDevice device, VIComputePipeline pipeline);
-VI_API VIFramebuffer vi_create_framebuffer(VIDevice device, const VIFramebufferInfo* info);
-VI_API void vi_destroy_framebuffer(VIDevice device, VIFramebuffer framebuffer);
-VI_API VICommandPool vi_create_command_pool(VIDevice device, uint32_t family_idx, VkCommandPoolCreateFlags flags);
-VI_API void vi_destroy_command_pool(VIDevice device, VICommandPool pool);
-VI_API VICommand vi_allocate_primary_command(VIDevice device, VICommandPool pool);
-VI_API VICommand vi_allocate_secondary_command(VIDevice device, VICommandPool pool);
-VI_API void vi_free_command(VIDevice device, VICommand cmd);
-
 VI_API void vi_device_wait_idle(VIDevice device);
 VI_API void vi_device_set_allocator_vk(VIDevice device, const VIAllocatorVK* allocator);
 VI_API const VIDeviceProfileVK* vi_device_get_profile_vk(VIDevice device);
 VI_API const VIDeviceProfileGL* vi_device_get_profile_gl(VIDevice device);
-VI_API const VIPhysicalDevice* vi_device_get_physical_device(VIDevice device); // TODO: remove? common limits?
-VI_API uint32_t vi_device_get_graphics_family_index(VIDevice device); // TODO: remove?
-VI_API VIQueue vi_device_get_graphics_queue(VIDevice device); // TODO: remove?
+VI_API const VIPhysicalDevice* vi_device_get_physical_device(VIDevice device);
+VI_API uint32_t vi_device_get_graphics_family_index(VIDevice device);
+VI_API VIQueue vi_device_get_graphics_queue(VIDevice device);
 VI_API bool vi_device_has_depth_stencil_format(VIDevice device, VIFormat format, VkImageTiling tiling);
 VI_API VIPass vi_device_get_swapchain_pass(VIDevice device);
 VI_API VIFramebuffer vi_device_get_swapchain_framebuffer(VIDevice device, uint32_t index);
 VI_API uint32_t vi_device_next_frame(VIDevice device, VISemaphore* image_acquired, VISemaphore* present_ready, VIFence* frame_complete);
 VI_API void vi_device_present_frame(VIDevice device);
+
 VI_API void vi_queue_wait_idle(VIQueue queue);
 VI_API void vi_queue_submit(VIQueue queue, uint32_t submit_count, VISubmitInfo* submits, VIFence fence);
-VI_API void vi_set_update(VISet set, uint32_t update_count, const VISetUpdateInfo* updates);
 
+VI_API VIFence vi_create_fence(VIDevice device, VkFenceCreateFlags flags);
+VI_API void vi_destroy_fence(VIDevice device, VIFence fence);
+VI_API void vi_wait_for_fences(VIDevice device, uint32_t fence_count, VIFence* fences, bool wait_all, uint64_t timeout);
+
+// Render Pass and Framebuffers
+
+VI_API VIPass vi_create_pass(VIDevice device, const VIPassInfo* info);
+VI_API void vi_destroy_pass(VIDevice device, VIPass pass);
+
+VI_API VIFramebuffer vi_create_framebuffer(VIDevice device, const VIFramebufferInfo* info);
+VI_API void vi_destroy_framebuffer(VIDevice device, VIFramebuffer framebuffer);
+
+// Buffers
+
+VI_API VIBuffer vi_create_buffer(VIDevice device, const VIBufferInfo* info);
+VI_API void vi_destroy_buffer(VIDevice device, VIBuffer buffer);
 VI_API void vi_buffer_map(VIBuffer buffer);
 VI_API void* vi_buffer_map_read(VIBuffer buffer, uint32_t offset, uint32_t size);
 VI_API void vi_buffer_map_write(VIBuffer buffer, uint32_t offset, uint32_t size, const void* write);
@@ -672,6 +659,39 @@ VI_API void vi_buffer_map_flush(VIBuffer buffer, uint32_t offset, uint32_t size)
 VI_API void vi_buffer_map_invalidate(VIBuffer buffer, uint32_t offset, uint32_t size);
 VI_API void vi_buffer_unmap(VIBuffer buffer);
 
+// Images
+
+VI_API VIImage vi_create_image(VIDevice device, const VIImageInfo* info);
+VI_API void vi_destroy_image(VIDevice device, VIImage image);
+
+// Set Resources
+
+VI_API VISetLayout vi_create_set_layout(VIDevice device, const VISetLayoutInfo* info);
+VI_API void vi_destroy_set_layout(VIDevice device, VISetLayout layout);
+VI_API VISetPool vi_create_set_pool(VIDevice device, const VISetPoolInfo* info);
+VI_API void vi_destroy_set_pool(VIDevice device, VISetPool pool);
+VI_API VISet vi_allocate_set(VIDevice device, VISetPool pool, VISetLayout layout);
+VI_API void vi_free_set(VIDevice device, VISet set);
+VI_API void vi_set_update(VISet set, uint32_t update_count, const VISetUpdateInfo* updates);
+
+// Modules and Pipelines
+
+VI_API VIPipelineLayout vi_create_pipeline_layout(VIDevice device, const VIPipelineLayoutInfo* info);
+VI_API void vi_destroy_pipeline_layout(VIDevice device, VIPipelineLayout layout);
+VI_API VIModule vi_create_module(VIDevice device, const VIModuleInfo* info);
+VI_API void vi_destroy_module(VIDevice device, VIModule module);
+VI_API VIPipeline vi_create_pipeline(VIDevice device, const VIPipelineInfo* info);
+VI_API void vi_destroy_pipeline(VIDevice device, VIPipeline pipeline);
+VI_API VIComputePipeline vi_create_compute_pipeline(VIDevice device, const VIComputePipelineInfo* info);
+VI_API void vi_destroy_compute_pipeline(VIDevice device, VIComputePipeline pipeline);
+
+// Commands
+
+VI_API VICommandPool vi_create_command_pool(VIDevice device, uint32_t family_idx, VkCommandPoolCreateFlags flags);
+VI_API void vi_destroy_command_pool(VIDevice device, VICommandPool pool);
+VI_API VICommand vi_allocate_primary_command(VIDevice device, VICommandPool pool);
+VI_API VICommand vi_allocate_secondary_command(VIDevice device, VICommandPool pool);
+VI_API void vi_free_command(VIDevice device, VICommand cmd);
 VI_API void vi_command_reset(VICommand cmd);
 VI_API void vi_command_begin(VICommand cmd, VkCommandBufferUsageFlags flags, const VICommandInheritanceInfo* inheritance);
 VI_API void vi_command_end(VICommand cmd);
@@ -699,9 +719,13 @@ VI_API void vi_cmd_pipeline_barrier_memory(VICommand cmd, VkPipelineStageFlags s
 VI_API void vi_cmd_pipeline_barrier_image_memory(VICommand cmd, VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages, VkDependencyFlags deps, uint32_t barrier_count, const VIImageMemoryBarrier* barriers);
 VI_API void vi_cmd_pipeline_barrier_buffer_memory(VICommand cmd, VkPipelineStageFlags src_stages, VkPipelineStageFlags dst_stages, VkDependencyFlags deps, uint32_t barrier_count, const VIBufferMemoryBarrier* barriers);
 
+// Offline Compilation
+
 VI_API char* vi_compile_binary_offline(VIBackend backend, VIModuleType type, const VIPipelineLayoutData* pipeline_layout, const char* vise_glsl, uint32_t* binary_size);
 VI_API char* vi_compile_binary(VIDevice device, VIModuleType type, VIPipelineLayout pipeline_layout, const char* vise_glsl, uint32_t* binary_size);
 VI_API void vi_free(void* data);
+
+// Unwrap Native Handles
 
 VI_API VkInstance vi_device_unwrap_instance(VIDevice device);
 VI_API VkDevice vi_device_unwrap(VIDevice device);
