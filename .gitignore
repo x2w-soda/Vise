@@ -3,6 +3,8 @@ Build
 Docs
 Examples/ExampleTextureArray
 Examples/ExampleTextureSampling
-Examples/ExampleTextureCubemap
+Examples/ExampleStencil
+Examples/ExampleRasterization
+Examples/ExampleMultithreading
 Examples/ExampleDeferred
 Examples/ExampleSSR
